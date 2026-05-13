@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../src/server.js";
 import { createLogger } from "../src/logger.js";
 
-describe("GET /healthz", () => {
-  const app = createApp({ logger: createLogger("silent") });
+const app = createApp({
+  logger: createLogger("silent"),
+  bearerToken: "unused-for-healthz",
+});
 
+describe("GET /healthz", () => {
   it("returns 200 with status ok", async () => {
     const res = await app.request("/healthz");
     expect(res.status).toBe(200);

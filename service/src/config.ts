@@ -1,6 +1,7 @@
 export interface Config {
   port: number;
   logLevel: string;
+  bearerToken: string;
 }
 
 function readInt(name: string, fallback: number): number {
@@ -13,9 +14,18 @@ function readInt(name: string, fallback: number): number {
   return parsed;
 }
 
+function readRequired(name: string): string {
+  const v = process.env[name];
+  if (v === undefined || v === "") {
+    throw new Error(`${name} must be set`);
+  }
+  return v;
+}
+
 export function loadConfig(): Config {
   return {
     port: readInt("PORT", 8765),
     logLevel: process.env.LOG_LEVEL ?? "info",
+    bearerToken: readRequired("BEARER_TOKEN"),
   };
 }
