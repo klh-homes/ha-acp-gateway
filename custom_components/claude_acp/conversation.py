@@ -90,5 +90,18 @@ class ClaudeAcpConversationEntity(conversation.ConversationEntity):
         return conversation.ConversationResult(
             response=intent_response,
             conversation_id=conversation_id,
-            continue_conversation=True,
+            continue_conversation=_ends_with_question(speech),
         )
+
+
+def _ends_with_question(speech: str) -> bool:
+    """True if the reply ends with a question mark (ASCII or full-width).
+
+    Used to decide whether HA's Assist pipeline should keep the satellite
+    listening for a follow-up without another wake word. Claude is
+    instructed via CLAUDE.md to end any reply that needs the user to
+    respond with a question mark; statements get the conversation closed
+    so the satellite returns to wake-word mode.
+    """
+    stripped = speech.rstrip()
+    return stripped.endswith(("?", "？"))  # noqa: RUF001 — both forms are intentional

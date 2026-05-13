@@ -168,6 +168,63 @@ describe("SessionPool — capacity", () => {
   });
 });
 
+describe("SessionPool — max-age eviction", () => {
+  it("force-evicts an entry past its max age on next acquire", async () => {
+    const f = makeFactory();
+    let now = 1_000_000;
+    const pool = new SessionPool({
+      factory: f.factory,
+      logger,
+      maxConcurrent: 4,
+      idleTtlMs: 60_000,
+      idleCheckMs: 0,
+      maxAgeMs: 5_000,
+      now: () => now,
+    });
+    const a = await pool.acquire("conv-A", baseOpts);
+    expect(a.sessionId).toBe("sess-1");
+    a.release();
+
+    // Within max age — same session.
+    now += 4_000;
+    const b = await pool.acquire("conv-A", baseOpts);
+    expect(b.sessionId).toBe("sess-1");
+    expect(f.calls).toBe(1);
+    b.release();
+
+    // Past max age — should evict and spawn fresh.
+    now += 2_000; // total 6s since createdAt
+    const c = await pool.acquire("conv-A", baseOpts);
+    expect(c.sessionId).toBe("sess-2");
+    expect(f.calls).toBe(2);
+    c.release();
+    await pool.close();
+  });
+
+  it("maxAgeMs=0 disables max-age eviction", async () => {
+    const f = makeFactory();
+    let now = 1_000_000;
+    const pool = new SessionPool({
+      factory: f.factory,
+      logger,
+      maxConcurrent: 4,
+      idleTtlMs: 60_000,
+      idleCheckMs: 0,
+      maxAgeMs: 0,
+      now: () => now,
+    });
+    const a = await pool.acquire("conv-A", baseOpts);
+    a.release();
+    // Jump way past any reasonable max-age — should still reuse.
+    now += 1_000_000;
+    const b = await pool.acquire("conv-A", baseOpts);
+    expect(b.sessionId).toBe("sess-1");
+    expect(f.calls).toBe(1);
+    b.release();
+    await pool.close();
+  });
+});
+
 describe("SessionPool — idle TTL eviction", () => {
   it("closes entries idle past their TTL", async () => {
     const f = makeFactory();

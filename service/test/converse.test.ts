@@ -259,6 +259,62 @@ describe("POST /v1/converse — SSE stream", () => {
   });
 });
 
+describe("POST /v1/converse — singleton session affinity", () => {
+  it("collapses different conversation_ids to one session when affinity is entity", async () => {
+    let factoryCalls = 0;
+    const factory: AcpFactory = () => {
+      factoryCalls++;
+      let resolveClosed: () => void = () => {};
+      const closed = new Promise<void>((r) => {
+        resolveClosed = r;
+      });
+      return Promise.resolve({
+        sessionId: `sess-${factoryCalls}`,
+        closed,
+        async *prompt(_text: string): AsyncIterable<string> {
+          yield `delta-${factoryCalls}`;
+        },
+        close(): Promise<void> {
+          resolveClosed();
+          return Promise.resolve();
+        },
+      } satisfies AcpSession);
+    };
+    const pool = new SessionPool({
+      factory,
+      logger,
+      maxConcurrent: 4,
+      idleTtlMs: 60_000,
+      idleCheckMs: 0,
+    });
+    const app = createApp({
+      logger,
+      bearerToken: TEST_BEARER,
+      personaDir: "/tmp/p",
+      oauthToken: "fake",
+      pool,
+      sessionAffinity: "entity",
+    });
+
+    // Two requests with DIFFERENT conversation_ids — singleton mode should
+    // route both to the same session entry.
+    for (const cid of ["one", "two"]) {
+      await app.request("/v1/converse", {
+        method: "POST",
+        headers: authedHeaders(),
+        body: JSON.stringify({
+          conversation_id: cid,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      });
+    }
+
+    expect(factoryCalls).toBe(1);
+    expect(pool.size()).toBe(1);
+    await pool.close();
+  });
+});
+
 describe("POST /v1/converse — pool integration", () => {
   it("reuses the same session for the same conversation_id across requests", async () => {
     let factoryCalls = 0;

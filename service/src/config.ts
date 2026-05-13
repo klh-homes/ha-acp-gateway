@@ -1,3 +1,5 @@
+export type SessionAffinity = "conversation" | "entity";
+
 export interface Config {
   port: number;
   logLevel: string;
@@ -6,6 +8,16 @@ export interface Config {
   oauthToken: string;
   maxConcurrentSessions: number;
   sessionIdleTtlSec: number;
+  /** Force-evict a session after this many seconds of total lifetime, even
+   *  if it's been active. 0 disables max-age (idle TTL only). */
+  sessionMaxAgeSec: number;
+  /** "conversation" (default): pool keys on the request's conversation_id —
+   *  HA's Assist controls reuse, fresh wake-words get cold sessions.
+   *  "entity": pool collapses all requests to a single singleton session
+   *  per service process — every request after the first hits the warm
+   *  subprocess + Anthropic prompt cache. Trade-off: Claude remembers
+   *  prior unrelated conversations until the session is evicted. */
+  sessionAffinity: SessionAffinity;
 }
 
 function readInt(name: string, fallback: number): number {
@@ -13,6 +25,16 @@ function readInt(name: string, fallback: number): number {
   if (raw === undefined || raw === "") return fallback;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid ${name}: ${raw}`);
+  }
+  return parsed;
+}
+
+function readNonNegativeInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
     throw new Error(`Invalid ${name}: ${raw}`);
   }
   return parsed;
@@ -26,6 +48,17 @@ function readRequired(name: string): string {
   return v;
 }
 
+function readAffinity(): SessionAffinity {
+  const raw = process.env.SESSION_AFFINITY;
+  if (raw === undefined || raw === "") return "conversation";
+  if (raw !== "conversation" && raw !== "entity") {
+    throw new Error(
+      `Invalid SESSION_AFFINITY: ${raw} (must be "conversation" or "entity")`,
+    );
+  }
+  return raw;
+}
+
 export function loadConfig(): Config {
   return {
     port: readInt("PORT", 8765),
@@ -35,5 +68,7 @@ export function loadConfig(): Config {
     oauthToken: readRequired("CLAUDE_CODE_OAUTH_TOKEN"),
     maxConcurrentSessions: readInt("MAX_CONCURRENT_SESSIONS", 8),
     sessionIdleTtlSec: readInt("SESSION_IDLE_TTL_SEC", 1800),
+    sessionMaxAgeSec: readNonNegativeInt("SESSION_MAX_AGE_SEC", 0),
+    sessionAffinity: readAffinity(),
   };
 }

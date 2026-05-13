@@ -17,6 +17,9 @@ export interface SessionPoolOptions {
   idleTtlMs: number;
   /** How often the background sweeper runs. 0 disables it. */
   idleCheckMs: number;
+  /** Force-evict on the next acquire after an entry exceeds this lifetime
+   *  in ms. 0 disables (idle TTL is then the only eviction trigger). */
+  maxAgeMs?: number;
   /** Override clock for tests. */
   now?: () => number;
 }
@@ -33,6 +36,7 @@ interface InternalEntry {
   inUse: boolean;
   exited: boolean;
   lastUsedAt: number;
+  createdAt: number;
 }
 
 export class PoolAtCapacityError extends Error {
@@ -57,6 +61,7 @@ export class SessionPool {
   private readonly logger: Logger;
   private readonly maxConcurrent: number;
   private readonly idleTtlMs: number;
+  private readonly maxAgeMs: number;
   private readonly clock: () => number;
   private readonly sweeper: NodeJS.Timeout | null;
   private shuttingDown = false;
@@ -66,6 +71,7 @@ export class SessionPool {
     this.logger = opts.logger;
     this.maxConcurrent = opts.maxConcurrent;
     this.idleTtlMs = opts.idleTtlMs;
+    this.maxAgeMs = opts.maxAgeMs ?? 0;
     this.clock = opts.now ?? (() => Date.now());
 
     if (opts.idleCheckMs > 0) {
@@ -92,9 +98,24 @@ export class SessionPool {
       if (existing.inUse) {
         throw new ConcurrentRequestError(conversationId);
       }
-      existing.inUse = true;
-      existing.lastUsedAt = this.clock();
-      return this.wrapEntry(existing);
+      // Force-evict if the entry has lived past its max age. Only checked
+      // on idle acquire — we don't yank a session out from under an
+      // in-flight request.
+      if (
+        this.maxAgeMs > 0 &&
+        this.clock() - existing.createdAt >= this.maxAgeMs
+      ) {
+        this.logger.info(
+          { conversationId, reason: "max-age" },
+          "evicting session past max age",
+        );
+        this.entries.delete(conversationId);
+        await this.safeClose(existing);
+      } else {
+        existing.inUse = true;
+        existing.lastUsedAt = this.clock();
+        return this.wrapEntry(existing);
+      }
     }
     if (existing?.exited) {
       this.entries.delete(conversationId);
@@ -120,12 +141,14 @@ export class SessionPool {
       logger: sessionLogger,
     });
 
+    const now = this.clock();
     const entry: InternalEntry = {
       conversationId,
       session,
       inUse: true,
       exited: false,
-      lastUsedAt: this.clock(),
+      lastUsedAt: now,
+      createdAt: now,
     };
     this.entries.set(conversationId, entry);
 

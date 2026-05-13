@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
+import type { SessionAffinity } from "./config.js";
 import type { Logger } from "./logger.js";
 import type { SessionPool } from "./session_pool.js";
 import {
@@ -9,6 +10,12 @@ import {
 import { chunkForTts } from "./tts_chunker.js";
 
 export type { AcpFactory } from "./acp_session.js";
+
+/** Pool key used when SESSION_AFFINITY=entity collapses all requests to a
+ *  single shared session per service process. The literal value isn't
+ *  visible to clients; it just needs to be deterministic and distinct
+ *  from any conversation_id a client would send. */
+const SINGLETON_POOL_KEY = "__singleton__";
 
 interface ConverseMessage {
   role: string;
@@ -56,6 +63,10 @@ export interface ConverseHandlerDeps {
   personaDir: string;
   oauthToken: string;
   pool: SessionPool;
+  /** Default "conversation" — pool keys on each request's conversation_id.
+   *  "entity" collapses every request to one singleton session, trading
+   *  cross-conversation memory bleed for permanent warm-cache hits. */
+  sessionAffinity?: SessionAffinity;
 }
 
 function friendlyErrorMessage(err: unknown): string {
@@ -75,6 +86,8 @@ function friendlyErrorMessage(err: unknown): string {
 }
 
 export function createConverseHandler(deps: ConverseHandlerDeps) {
+  const affinity = deps.sessionAffinity ?? "conversation";
+
   return async (c: Context) => {
     let body: unknown;
     try {
@@ -105,11 +118,13 @@ export function createConverseHandler(deps: ConverseHandlerDeps) {
 
       let entry: Awaited<ReturnType<SessionPool["acquire"]>> | null = null;
       try {
+        const poolKey =
+          affinity === "entity" ? SINGLETON_POOL_KEY : req.conversation_id;
         log.info(
-          { message_count: req.messages.length },
+          { message_count: req.messages.length, affinity, pool_key: poolKey },
           "acquiring ACP session from pool",
         );
-        entry = await deps.pool.acquire(req.conversation_id, {
+        entry = await deps.pool.acquire(poolKey, {
           personaDir: deps.personaDir,
           oauthToken: deps.oauthToken,
           logger: log,

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { bearerAuth } from "./auth.js";
+import type { SessionAffinity } from "./config.js";
 import { createConverseHandler } from "./converse.js";
 import type { Logger } from "./logger.js";
 import type { SessionPool } from "./session_pool.js";
@@ -10,6 +11,7 @@ export interface AppDeps {
   personaDir: string;
   oauthToken: string;
   pool: SessionPool;
+  sessionAffinity?: SessionAffinity;
 }
 
 export function createApp(deps: AppDeps): Hono {
@@ -27,6 +29,7 @@ export function createApp(deps: AppDeps): Hono {
       personaDir: deps.personaDir,
       oauthToken: deps.oauthToken,
       pool: deps.pool,
+      ...(deps.sessionAffinity ? { sessionAffinity: deps.sessionAffinity } : {}),
     }),
   );
 

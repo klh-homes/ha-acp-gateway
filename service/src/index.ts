@@ -14,6 +14,7 @@ const pool = new SessionPool({
   maxConcurrent: config.maxConcurrentSessions,
   idleTtlMs: config.sessionIdleTtlSec * 1000,
   idleCheckMs: 60_000,
+  maxAgeMs: config.sessionMaxAgeSec * 1000,
 });
 
 const app = createApp({
@@ -22,10 +23,19 @@ const app = createApp({
   personaDir: config.personaDir,
   oauthToken: config.oauthToken,
   pool,
+  sessionAffinity: config.sessionAffinity,
 });
 
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
-  logger.info({ port: info.port }, "service listening");
+  logger.info(
+    {
+      port: info.port,
+      session_affinity: config.sessionAffinity,
+      idle_ttl_sec: config.sessionIdleTtlSec,
+      max_age_sec: config.sessionMaxAgeSec,
+    },
+    "service listening",
+  );
 });
 
 function shutdown(signal: NodeJS.Signals) {
