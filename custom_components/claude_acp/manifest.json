@@ -1,0 +1,13 @@
+{
+  "domain": "claude_acp",
+  "name": "Claude Agent (ACP)",
+  "codeowners": ["@kirintwn"],
+  "config_flow": true,
+  "dependencies": ["conversation"],
+  "documentation": "https://github.com/klh-homes/ha-claude-acp",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/klh-homes/ha-claude-acp/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

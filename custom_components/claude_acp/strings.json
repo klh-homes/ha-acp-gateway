@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Claude Agent (ACP)",
+        "description": "Configure the gateway service that bridges Home Assistant to Claude.",
+        "data": {
+          "gateway_url": "Gateway URL",
+          "bearer_token": "Bearer token",
+          "model": "Model",
+          "system_prompt": "System prompt (optional override)",
+          "max_tokens": "Max tokens",
+          "request_timeout_s": "Request timeout (seconds)"
+        }
+      }
+    }
+  }
+}
