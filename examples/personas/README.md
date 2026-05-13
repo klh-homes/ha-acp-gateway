@@ -66,9 +66,10 @@ There are two ways to consume `examples/personas/`:
    and `lib/install-skills.sh`. Editing the persona forces an image
    rebuild, so image SHA tracks the persona's contract.
 
-The bake-and-reseed pattern matches the convention used by the openab /
-quill agents in the klh-homelab deployment; see
-`klh-homelab/CLAUDE.md` for the rationale on named-volume masking.
+The bake-and-reseed pattern exists because Docker named volumes mask
+image content at the same path after first creation. `cp -f` /
+`rsync --delete` from a bake location OUTSIDE the volume on every
+container start guarantees image updates always win.
 
 ## Where the real personas live
 

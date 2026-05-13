@@ -72,8 +72,8 @@ The persona directory is mounted read-only. The adapter does not write to
 `HOME` during normal operation; OAuth is passed via env, not cached on disk
 (see [Authentication](#authentication)).
 
-Real persona content lives in the **deployment repo** (e.g. `klh-homelab`),
-not in this repo. Copy-and-edit templates live under
+Real persona content lives in the **deployment repo** you operate this
+service from, not in this repo. Copy-and-edit templates live under
 [`examples/personas/`](../examples/personas/) — a `minimal/` for first-boot
 smoke testing and a `voice-assistant/` tuned for the HA voice pipeline.
 

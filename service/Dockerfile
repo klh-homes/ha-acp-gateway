@@ -27,8 +27,7 @@ COPY package.json ./
 
 # Run as the node:24 base image's built-in `node` user (UID 1000). PERSONA_DIR
 # overlaps with $HOME so the spawned claude-agent-acp subprocess and any
-# operator-side entrypoint helpers share one home dir — same convention as
-# the openab/quill agents in the klh-homelab reference deployment.
+# operator-side entrypoint helpers share one home dir.
 RUN chown -R node:node /app
 USER node
 

@@ -38,9 +38,10 @@ The bake-into-image + reseed-on-start pattern means:
 - Skills can be added/removed by editing the Dockerfile's COPY lines;
   `rsync --delete` cleans up removed files on next start.
 
-The same convention is used by the openab/quill agents in the
-klh-homelab deployment — see klh-homelab's `CLAUDE.md` for the
-authoritative discussion of named-volume-masking and the bake escape.
+This bake-and-reseed pattern exists because Docker named volumes mask
+image content at the same path once they're created. Reseeding at every
+container start (`install-config.sh` + `install-skills.sh`) guarantees
+image updates always win over stale volume content.
 
 ## MCP setup
 
