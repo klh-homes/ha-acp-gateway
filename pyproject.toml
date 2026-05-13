@@ -1,0 +1,19 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-exclude = ["service"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "UP",  # pyupgrade
+  "RUF", # ruff
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+extend-exclude = "service/"

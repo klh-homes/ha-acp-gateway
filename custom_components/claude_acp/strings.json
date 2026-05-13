@@ -8,10 +8,15 @@
           "name": "Persona name",
           "gateway_url": "Gateway URL",
           "bearer_token": "Bearer token",
-          "max_tokens": "Max tokens",
           "request_timeout_s": "Request timeout (seconds)"
         }
       }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the gateway. Check the URL and bearer token."
+    },
+    "abort": {
+      "already_configured": "This persona is already configured."
     }
   }
 }
