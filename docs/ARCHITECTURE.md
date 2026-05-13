@@ -58,9 +58,12 @@ persona/
 ```
 
 The actual persona content lives in the **deployment repo** (for example
-`klh-homelab`), not in this repo. This repo only ships `examples/personas/` as
-copy-and-edit templates. Treat persona dirs as deployment data, not source
-code.
+`klh-homelab`), not in this repo. Once `/v1/converse` lands and the on-disk
+schema is locked, this repo will ship `examples/personas/` as copy-and-edit
+templates. Treat persona dirs as deployment data, not source code.
+
+The persona dir is read at service startup. Reloading currently requires a
+container restart; SIGHUP-driven hot reload is V2.
 
 V2 may add `skills/*.md` discovered from the persona dir; deferred.
 
@@ -97,8 +100,15 @@ The service is intentionally thin about agent behavior, thick about transport.
   connection.
 - **Bearer auth** on `/v1/converse`. `/healthz` stays open.
 - **Subprocess hygiene.** Spawn with `env: {}` plus an explicit allowlist
-  (`HOME`, `PATH`, `USER`, plus persona-specific overrides). Never leak the
-  service's own env (especially `BEARER_TOKEN`, OAuth token) into the child.
+  (`HOME`, `PATH`, `USER`, plus the OAuth token and any persona-specific
+  overrides). Never leak the service's own `BEARER_TOKEN` or unrelated host
+  env into the child.
+- **Built-in tool denylist on ACP init.** The spawned `claude` runtime ships
+  with filesystem and shell tools that have no business in a voice-pipeline
+  agent: `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `Task`,
+  `WebFetch`, `WebSearch`. These are explicitly disabled at the ACP
+  `initialize` call. The persona's MCP servers are the only sanctioned tool
+  surface.
 - **Structured logging.** All log lines include `conversation_id` once
   established, so per-conversation traces can be grepped out.
 

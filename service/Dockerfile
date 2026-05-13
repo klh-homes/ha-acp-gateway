@@ -27,7 +27,12 @@ RUN useradd --system --create-home --shell /usr/sbin/nologin app \
 USER app
 
 ENV PORT=8765
+ENV PERSONA_DIR=/config/persona
 EXPOSE 8765
+
+# Persona dir is expected to be mounted by the operator (read-only is fine).
+# See docs/ARCHITECTURE.md and examples/personas/ for the layout.
+VOLUME ["/config/persona"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://127.0.0.1:${PORT}/healthz || exit 1
