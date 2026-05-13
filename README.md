@@ -51,8 +51,8 @@ deployment with a different persona directory and bearer token, then add a
 second integration entry in Home Assistant pointing at it.
 
 Real persona directories belong to the deployment repository (the homelab
-that operates this service), not to this repo. This repo will ship
-`examples/personas/` as templates once V1's `/v1/converse` lands.
+that operates this service), not to this repo. Copy-and-edit templates
+live under [`examples/personas/`](examples/personas/).
 
 See `docs/ARCHITECTURE.md` for the full rationale and the thin/thick service
 boundary.

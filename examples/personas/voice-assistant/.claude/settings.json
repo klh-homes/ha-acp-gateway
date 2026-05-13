@@ -1,0 +1,7 @@
+{
+  "model": "default",
+  "effortLevel": "low",
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  }
+}
