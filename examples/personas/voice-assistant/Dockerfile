@@ -20,7 +20,7 @@
 #   3. Optionally vendor skill packs and add COPY lines below the placeholder
 #   4. Reference this Dockerfile from your compose service block
 
-ARG HA_CLAUDE_ACP_VERSION=0.1.0
+ARG HA_CLAUDE_ACP_VERSION=0.1.1
 
 FROM ghcr.io/klh-homes/ha-claude-acp:${HA_CLAUDE_ACP_VERSION}
 

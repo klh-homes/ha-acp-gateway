@@ -34,7 +34,7 @@ services:
       args:
         # Pin the upstream release explicitly — :latest moves under you
         # when a new image is published.
-        HA_CLAUDE_ACP_VERSION: 0.1.0
+        HA_CLAUDE_ACP_VERSION: 0.1.1
     container_name: claude-acp-jarvis
     restart: unless-stopped
     init: true
