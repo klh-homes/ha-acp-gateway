@@ -1,13 +1,45 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/server.js";
 import { createLogger } from "../src/logger.js";
+import type { AcpFactory } from "../src/converse.js";
+import type { AcpSession } from "../src/acp_session.js";
 
 const TEST_BEARER = "test-bearer-token";
 
-function makeApp() {
+interface FakeSessionOptions {
+  deltas?: string[];
+  promptThrows?: unknown;
+  onClose?: () => void;
+}
+
+function makeFakeAcpFactory(opts: FakeSessionOptions = {}): AcpFactory {
+  return () =>
+    Promise.resolve({
+      sessionId: "fake-session-1",
+      async *prompt(_text: string): AsyncIterable<string> {
+        if (opts.promptThrows !== undefined) throw opts.promptThrows;
+        for (const d of opts.deltas ?? []) {
+          yield d;
+        }
+      },
+      close(): Promise<void> {
+        opts.onClose?.();
+        return Promise.resolve();
+      },
+    } satisfies AcpSession);
+}
+
+function makeApp(opts?: FakeSessionOptions & { factoryThrows?: unknown }) {
+  const factory: AcpFactory =
+    opts?.factoryThrows !== undefined
+      ? () => Promise.reject(opts.factoryThrows as Error)
+      : makeFakeAcpFactory(opts);
   return createApp({
     logger: createLogger("silent"),
     bearerToken: TEST_BEARER,
+    personaDir: "/tmp/test-persona",
+    oauthToken: "fake-oauth",
+    acpFactory: factory,
   });
 }
 
@@ -112,17 +144,23 @@ describe("POST /v1/converse — request validation", () => {
   });
 });
 
-describe("POST /v1/converse — SSE echo stream", () => {
-  it("streams the last user message as text deltas terminated by done", async () => {
-    const res = await makeApp().request("/v1/converse", {
+describe("POST /v1/converse — SSE stream", () => {
+  it("streams text deltas from the ACP session and terminates with done", async () => {
+    let closed = false;
+    const res = await makeApp({
+      deltas: ["hello", " ", "world"],
+      onClose: () => {
+        closed = true;
+      },
+    }).request("/v1/converse", {
       method: "POST",
       headers: authedHeaders(),
       body: JSON.stringify({
         conversation_id: "c1",
         messages: [
-          { role: "user", content: "ignored earlier message" },
+          { role: "user", content: "earlier" },
           { role: "assistant", content: "previous reply" },
-          { role: "user", content: "hello world this is the prompt" },
+          { role: "user", content: "current prompt" },
         ],
       }),
     });
@@ -130,34 +168,83 @@ describe("POST /v1/converse — SSE echo stream", () => {
     expect(res.headers.get("content-type") ?? "").toMatch(/^text\/event-stream/);
 
     const events = await readSseEvents(res);
-    const textEvents = events.filter((e) => e.event === "text");
-    const doneEvents = events.filter((e) => e.event === "done");
-
-    expect(textEvents.length).toBeGreaterThan(0);
-    expect(doneEvents).toHaveLength(1);
-
-    const reconstructed = textEvents
+    const text = events
+      .filter((e) => e.event === "text")
       .map((e) => (JSON.parse(e.data) as { delta: string }).delta)
       .join("");
-    expect(reconstructed).toBe("hello world this is the prompt");
+    const done = events.filter((e) => e.event === "done");
+
+    expect(text).toBe("hello world");
+    expect(done).toHaveLength(1);
+    expect(closed).toBe(true);
   });
 
-  it("falls back to a placeholder when there is no user message", async () => {
-    const res = await makeApp().request("/v1/converse", {
+  it("emits an error event and closes the session when the factory throws", async () => {
+    const res = await makeApp({
+      factoryThrows: new Error("spawn failed"),
+    }).request("/v1/converse", {
       method: "POST",
       headers: authedHeaders(),
       body: JSON.stringify({
-        conversation_id: "c2",
-        messages: [{ role: "system", content: "just a system message" }],
+        conversation_id: "c1",
+        messages: [{ role: "user", content: "hi" }],
       }),
     });
     expect(res.status).toBe(200);
 
     const events = await readSseEvents(res);
-    const reconstructed = events
-      .filter((e) => e.event === "text")
-      .map((e) => (JSON.parse(e.data) as { delta: string }).delta)
-      .join("");
-    expect(reconstructed).toBe("(no user message)");
+    const errors = events.filter((e) => e.event === "error");
+    const done = events.filter((e) => e.event === "done");
+
+    expect(errors).toHaveLength(1);
+    expect((JSON.parse(errors[0]!.data) as { message: string }).message).toMatch(
+      /spawn failed/,
+    );
+    expect(done).toHaveLength(0);
+  });
+
+  it("emits an error event when prompt throws mid-stream and still closes the session", async () => {
+    let closed = false;
+    const res = await makeApp({
+      promptThrows: new Error("agent crashed"),
+      onClose: () => {
+        closed = true;
+      },
+    }).request("/v1/converse", {
+      method: "POST",
+      headers: authedHeaders(),
+      body: JSON.stringify({
+        conversation_id: "c1",
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    const events = await readSseEvents(res);
+    expect(events.filter((e) => e.event === "error")).toHaveLength(1);
+    expect(events.filter((e) => e.event === "done")).toHaveLength(0);
+    expect(closed).toBe(true);
+  });
+
+  it("emits an error event when there is no user message", async () => {
+    const res = await makeApp({ deltas: ["never-yielded"] }).request(
+      "/v1/converse",
+      {
+        method: "POST",
+        headers: authedHeaders(),
+        body: JSON.stringify({
+          conversation_id: "c1",
+          messages: [{ role: "system", content: "system only" }],
+        }),
+      },
+    );
+    expect(res.status).toBe(200);
+
+    const events = await readSseEvents(res);
+    const errors = events.filter((e) => e.event === "error");
+    expect(errors).toHaveLength(1);
+    expect((JSON.parse(errors[0]!.data) as { message: string }).message).toMatch(
+      /no user message/i,
+    );
   });
 });

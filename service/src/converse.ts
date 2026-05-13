@@ -1,5 +1,7 @@
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
+import { openAcpSession } from "./acp_session.js";
+import type { AcpSession } from "./acp_session.js";
 import type { Logger } from "./logger.js";
 
 interface ConverseMessage {
@@ -43,14 +45,25 @@ function validateBody(body: unknown): ConverseRequest | null {
   return out;
 }
 
-const ECHO_CHUNK_SIZE = 12;
-const ECHO_CHUNK_DELAY_MS = 20;
+export type AcpFactory = (opts: {
+  personaDir: string;
+  oauthToken: string;
+  logger: Logger;
+}) => Promise<AcpSession>;
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+const defaultAcpFactory: AcpFactory = (opts) => openAcpSession(opts);
+
+export interface ConverseHandlerDeps {
+  logger: Logger;
+  personaDir: string;
+  oauthToken: string;
+  /** Test-injection point. Defaults to spawning a real claude-agent-acp. */
+  acpFactory?: AcpFactory;
 }
 
-export function createConverseHandler(deps: { logger: Logger }) {
+export function createConverseHandler(deps: ConverseHandlerDeps) {
+  const acpFactory = deps.acpFactory ?? defaultAcpFactory;
+
   return async (c: Context) => {
     let body: unknown;
     try {
@@ -68,22 +81,57 @@ export function createConverseHandler(deps: { logger: Logger }) {
     const lastUser = [...req.messages]
       .reverse()
       .find((m) => m.role === "user");
-    const echo = lastUser?.content ?? "(no user message)";
 
     return streamSSE(c, async (stream) => {
-      log.info({ message_count: req.messages.length }, "converse start (echo)");
-      for (let i = 0; i < echo.length; i += ECHO_CHUNK_SIZE) {
-        const delta = echo.slice(i, i + ECHO_CHUNK_SIZE);
+      if (!lastUser) {
+        log.warn("no user message in request");
         await stream.writeSSE({
-          event: "text",
-          data: JSON.stringify({ delta }),
+          event: "error",
+          data: JSON.stringify({ message: "No user message in request." }),
         });
-        if (i + ECHO_CHUNK_SIZE < echo.length) {
-          await sleep(ECHO_CHUNK_DELAY_MS);
+        return;
+      }
+
+      let session: AcpSession | null = null;
+      try {
+        log.info(
+          { message_count: req.messages.length },
+          "opening ACP session",
+        );
+        session = await acpFactory({
+          personaDir: deps.personaDir,
+          oauthToken: deps.oauthToken,
+          logger: log,
+        });
+        log.info({ sessionId: session.sessionId }, "converse stream start");
+
+        for await (const delta of session.prompt(lastUser.content)) {
+          await stream.writeSSE({
+            event: "text",
+            data: JSON.stringify({ delta }),
+          });
+        }
+        await stream.writeSSE({ event: "done", data: "{}" });
+        log.info("converse stream done");
+      } catch (err) {
+        log.error({ err }, "converse stream failed");
+        const message =
+          err instanceof Error
+            ? err.message
+            : "The assistant could not complete the request.";
+        await stream.writeSSE({
+          event: "error",
+          data: JSON.stringify({ message }),
+        });
+      } finally {
+        if (session) {
+          try {
+            await session.close();
+          } catch (err) {
+            log.warn({ err }, "session close failed");
+          }
         }
       }
-      await stream.writeSSE({ event: "done", data: "{}" });
-      log.info("converse done (echo)");
     });
   };
 }

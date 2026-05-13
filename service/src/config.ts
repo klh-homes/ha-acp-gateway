@@ -2,6 +2,8 @@ export interface Config {
   port: number;
   logLevel: string;
   bearerToken: string;
+  personaDir: string;
+  oauthToken: string;
 }
 
 function readInt(name: string, fallback: number): number {
@@ -27,5 +29,7 @@ export function loadConfig(): Config {
     port: readInt("PORT", 8765),
     logLevel: process.env.LOG_LEVEL ?? "info",
     bearerToken: readRequired("BEARER_TOKEN"),
+    personaDir: readRequired("PERSONA_DIR"),
+    oauthToken: readRequired("CLAUDE_CODE_OAUTH_TOKEN"),
   };
 }

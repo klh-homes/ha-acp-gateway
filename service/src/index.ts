@@ -5,7 +5,12 @@ import { createApp } from "./server.js";
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
-const app = createApp({ logger, bearerToken: config.bearerToken });
+const app = createApp({
+  logger,
+  bearerToken: config.bearerToken,
+  personaDir: config.personaDir,
+  oauthToken: config.oauthToken,
+});
 
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   logger.info({ port: info.port }, "service listening");

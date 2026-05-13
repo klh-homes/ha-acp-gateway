@@ -5,6 +5,8 @@ import { createLogger } from "../src/logger.js";
 const app = createApp({
   logger: createLogger("silent"),
   bearerToken: "unused-for-healthz",
+  personaDir: "/tmp/unused",
+  oauthToken: "unused",
 });
 
 describe("GET /healthz", () => {
