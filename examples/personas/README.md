@@ -45,8 +45,30 @@ first-boot smoke testing the gateway in isolation.
 
 | Example | What it is |
 |---|---|
-| `minimal/` | One-line system prompt, no settings tweaks. Smallest demo. |
-| `voice-assistant/` | A realistic HA voice agent: short conversational prompt, `bypassPermissions` mode (so MCP tool calls don't prompt), model and effort tuned for voice latency. MCP setup left to deployment. |
+| `minimal/` | One-line system prompt in a bind-mounted `.claude/` directory. Smallest demo; nothing baked, no overlay Dockerfile. The simplest possible deployment. |
+| `voice-assistant/` | A realistic HA voice agent: short conversational prompt, `bypassPermissions` mode, model and effort tuned for voice latency. Ships with an **overlay Dockerfile** that bakes persona content into a per-persona image and an entrypoint that reseeds the volume + registers MCP servers via `claude mcp add` on every start. This is the pattern recommended for production homelabs. |
+
+## Two deployment patterns
+
+There are two ways to consume `examples/personas/`:
+
+1. **Bind-mount the persona dir** (`minimal/`-style). Mount the directory
+   read-only into the upstream image at the path it expects (see the
+   upstream `service/Dockerfile` for the current `PERSONA_DIR`). The
+   operator edits files on the host and they take effect at container
+   restart. No build step.
+
+2. **Bake-and-reseed** (`voice-assistant/`-style). A per-persona overlay
+   Dockerfile layers content onto the upstream image. The compose
+   service mounts a named volume at `PERSONA_DIR` for runtime state
+   (MCP registrations, future session storage); image-baked content is
+   reseeded into the volume on every start via `lib/install-config.sh`
+   and `lib/install-skills.sh`. Editing the persona forces an image
+   rebuild, so image SHA tracks the persona's contract.
+
+The bake-and-reseed pattern matches the convention used by the openab /
+quill agents in the klh-homelab deployment; see
+`klh-homelab/CLAUDE.md` for the rationale on named-volume masking.
 
 ## Where the real personas live
 

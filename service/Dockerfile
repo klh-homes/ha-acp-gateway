@@ -25,17 +25,22 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 
-RUN useradd --system --create-home --shell /usr/sbin/nologin app \
- && chown -R app:app /app
-USER app
+# Run as the node:24 base image's built-in `node` user (UID 1000). PERSONA_DIR
+# overlaps with $HOME so the spawned claude-agent-acp subprocess and any
+# operator-side entrypoint helpers share one home dir — same convention as
+# the openab/quill agents in the klh-homelab reference deployment.
+RUN chown -R node:node /app
+USER node
 
 ENV PORT=8765
-ENV PERSONA_DIR=/config/persona
+ENV PERSONA_DIR=/home/node
 EXPOSE 8765
 
-# Persona dir is expected to be mounted by the operator (read-only is fine).
-# See docs/ARCHITECTURE.md and examples/personas/ for the layout.
-VOLUME ["/config/persona"]
+# Persona dir is expected to be a named volume on /home/node when running
+# in compose / k8s. See docs/ARCHITECTURE.md and examples/personas/ for
+# the layout + the bake-and-reseed pattern that keeps image updates from
+# being masked by stale volume content.
+VOLUME ["/home/node"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://127.0.0.1:${PORT}/healthz || exit 1
