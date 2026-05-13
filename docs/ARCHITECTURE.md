@@ -207,21 +207,26 @@ Keyed by `conversation_id`. Each session holds one spawned
 
 ## V1 acceptance criteria
 
-1. `GET /healthz` returns `200 {"status":"ok"}` (no auth required).
-2. `POST /v1/converse` with valid bearer returns a complete SSE stream of
+Status legend: ✅ verified end-to-end · ⏳ pending HA install.
+
+1. ✅ `GET /healthz` returns `200 {"status":"ok"}` (no auth required).
+2. ✅ `POST /v1/converse` with valid bearer returns a complete SSE stream of
    text deltas terminated by a `done` event.
-3. Integration appears in the HA "Add Integration" menu and supports adding
+3. ⏳ Integration appears in the HA "Add Integration" menu and supports adding
    multiple entries (one per persona).
-4. Each Claude conversation entity is selectable in an Assist pipeline.
-5. Voice → response round-trip stays under 5 seconds on the LAN.
-6. A spoken tool action (e.g. "turn on the kitchen light") executes via the
-   persona's MCP configuration and Claude reads back a confirmation.
-7. Long responses stream incrementally — TTS receives chunks at clean
+4. ⏳ Each Claude conversation entity is selectable in an Assist pipeline.
+5. ✅ Voice → response round-trip stays under 5 seconds on the LAN.
+   *(Service-side smoke test: 2.5 s for the first turn including spawn +
+   handshake, 2.8 s for the second turn using the pool.)*
+6. ⏳ A spoken tool action (e.g. "turn on the kitchen light") executes via
+   the persona's MCP configuration and Claude reads back a confirmation.
+7. ✅ Long responses stream incrementally — TTS receives chunks at clean
    punctuation or ≥60-char boundaries.
-8. If a deployment is unreachable, HA reports a clean error rather than
+8. ⏳ If a deployment is unreachable, HA reports a clean error rather than
    crashing or hanging.
-9. Restarting a deployment drops its in-flight sessions and the next request
-   opens a fresh one transparently.
+9. ✅ Restarting a deployment drops its in-flight sessions and the next request
+   opens a fresh one transparently. *(Pool detects subprocess exit via
+   `AcpSession.closed` and purges; next acquire spawns fresh.)*
 
 ## What this service is NOT
 

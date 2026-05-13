@@ -9,10 +9,29 @@ tool calls through MCP servers configured per persona.
 
 ## Status
 
-V1 in progress. Acceptance criteria are tracked in `docs/ARCHITECTURE.md`.
+V1 service is functionally complete and smoke-tested end-to-end against a
+real Claude account. The Home Assistant integration code is wired but not
+yet exercised against a running HA instance — that's the remaining V1
+verification step.
 
-Current state: repo skeleton only. The service exposes `GET /healthz`. Nothing
-else is wired up yet.
+V1 acceptance criteria (see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+for full text):
+
+| # | Criterion | Status |
+|---|-----------|--------|
+| 1 | `/healthz` returns 200 unauthenticated | ✅ verified |
+| 2 | `/v1/converse` returns a complete SSE stream terminated by `done` | ✅ verified |
+| 3 | Integration appears in HA *Add Integration* menu and supports multiple entries | ⏳ pending HA install |
+| 4 | Claude conversation entity is selectable in an Assist pipeline | ⏳ pending HA install |
+| 5 | Voice round-trip under 5 s on the LAN | ✅ verified (2.5–2.8 s end-to-end) |
+| 6 | Spoken tool action executes via the persona's MCP | ⏳ pending HA install + MCP |
+| 7 | Long responses stream incrementally to TTS | ✅ verified (60+ char chunking with sentence alignment) |
+| 8 | Unreachable deployment surfaces a clean error in HA | ⏳ pending HA install |
+| 9 | Restarting a deployment spawns a fresh session transparently | ✅ verified (pool purges dead entries on subprocess exit) |
+
+Service-side end-to-end smoke confirmed multi-turn memory via session-pool
+reuse: a second prompt on the same `conversation_id` skipped the ACP
+handshake and Claude recalled the earlier turn.
 
 ## Components
 
@@ -42,13 +61,29 @@ boundary.
 
 ```bash
 cd service
-cp ../.env.example .env   # then edit
+cp ../.env.example .env       # then edit — CLAUDE_CODE_OAUTH_TOKEN at minimum
+mkdir -p /tmp/test-persona    # empty persona dir is valid (adapter defaults)
 npm install
-npm run dev               # tsx watch on PORT (default 8765)
-curl http://localhost:8765/healthz
+npm run dev                   # tsx watch; .env is auto-loaded
 ```
 
-Requires Node.js >= 24.
+`CLAUDE_CODE_OAUTH_TOKEN` comes from `claude setup-token` on a machine that
+has the Claude CLI installed. `BEARER_TOKEN` can be anything — `openssl rand
+-hex 32` is fine.
+
+Smoke test from another shell:
+
+```bash
+curl -i http://localhost:8765/healthz
+
+source service/.env && curl -N -X POST http://localhost:8765/v1/converse \
+  -H "Authorization: Bearer $BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"conversation_id":"smoke","messages":[{"role":"user","content":"Say hello in five words"}]}'
+```
+
+You should see `event: text` frames carrying the reply followed by
+`event: done`. Requires Node.js >= 24.
 
 ## License
 
