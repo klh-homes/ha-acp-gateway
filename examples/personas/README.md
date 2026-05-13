@@ -59,3 +59,10 @@ deploy time.
 **Do not commit secrets** (ha-mcp tokens, third-party API keys) into
 version control. Inject them at deploy time via volume mounts or env
 templates.
+
+## Multi-deployment example
+
+See [`../docker-compose.example.yaml`](../docker-compose.example.yaml) for
+a two-persona compose layout (one wake word per service block). The
+deployment repo's `personas/` directory holds the actual content and is
+mounted read-only into each container.

@@ -1,0 +1,77 @@
+# Example docker-compose for running multiple Claude Agent (ACP) personas.
+#
+# Each persona is a separate `service:` block with its own bearer token and
+# persona directory. Copy into your deployment repo (e.g. klh-homelab),
+# replace placeholders, and `docker compose up -d`.
+#
+# Image source:
+# - Tagged releases publish to ghcr.io/klh-homes/ha-claude-acp:<version>.
+# - For local development, build from this repo's service/ directory:
+#     docker build -t ghcr.io/klh-homes/ha-claude-acp:dev service/
+# - Or use `npm run dev` directly without docker for fastest iteration.
+#
+# Persona directories:
+# - Mount read-only at /config/persona. The adapter reads
+#   $HOME/.claude/{CLAUDE.md,settings.json,...} from inside the container.
+# - See examples/personas/ in this repo for templates.
+# - Copy a template, edit, then point the volume at your copy.
+#
+# Secrets:
+# - Pull CLAUDE_CODE_OAUTH_TOKEN from a shared .env (single Anthropic account
+#   per homelab is fine — usage is metered per token).
+# - Generate one BEARER_TOKEN per persona deployment with
+#   `openssl rand -hex 32`. A leaked token only compromises that persona.
+
+services:
+  claude-acp-jarvis:
+    image: ghcr.io/klh-homes/ha-claude-acp:latest
+    container_name: claude-acp-jarvis
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      BEARER_TOKEN: ${JARVIS_BEARER_TOKEN}
+      PERSONA_DIR: /config/persona
+      LOG_LEVEL: info
+      # Optional tuning:
+      # MAX_CONCURRENT_SESSIONS: 8
+      # SESSION_IDLE_TTL_SEC: 1800
+    volumes:
+      - ./personas/jarvis:/config/persona:ro
+    ports:
+      - "8765:8765"
+    restart: unless-stopped
+    networks:
+      - assist
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8765/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  claude-acp-friday:
+    image: ghcr.io/klh-homes/ha-claude-acp:latest
+    container_name: claude-acp-friday
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      BEARER_TOKEN: ${FRIDAY_BEARER_TOKEN}
+      PERSONA_DIR: /config/persona
+      LOG_LEVEL: info
+    volumes:
+      - ./personas/friday:/config/persona:ro
+    ports:
+      - "8766:8765"
+    restart: unless-stopped
+    networks:
+      - assist
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8765/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+networks:
+  assist:
+    # Or `external: true` and reference the network that HA itself lives on,
+    # so HA can reach the gateways by service name instead of host port.
+    driver: bridge
