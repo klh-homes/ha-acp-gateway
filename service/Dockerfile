@@ -16,7 +16,10 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends wget ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @anthropic-ai/claude-code
+# claude-agent-acp is the ACP server adapter that wraps @anthropic-ai/claude-agent-sdk
+# and exposes the binary on PATH. The service spawns `claude-agent-acp` as the ACP
+# subprocess; the Claude CLI itself does not speak ACP.
+RUN npm install -g @agentclientprotocol/claude-agent-acp
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

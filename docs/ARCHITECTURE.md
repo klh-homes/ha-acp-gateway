@@ -13,7 +13,10 @@ Wake word "Hey Jarvis" → Assist pipeline "Jarvis" → ConversationEntity "Jarv
                                                               │
                                                               │  ACP stdio JSON-RPC
                                                               ▼
-                                                  claude  (@anthropic-ai/claude-code)
+                                          claude-agent-acp  (ACP adapter)
+                                                              │  uses
+                                                              ▼
+                                              @anthropic-ai/claude-agent-sdk
                                                               │
                                                               │  MCP (configured in persona dir)
                                                               ▼
@@ -103,12 +106,12 @@ The service is intentionally thin about agent behavior, thick about transport.
   (`HOME`, `PATH`, `USER`, plus the OAuth token and any persona-specific
   overrides). Never leak the service's own `BEARER_TOKEN` or unrelated host
   env into the child.
-- **Built-in tool denylist on ACP init.** The spawned `claude` runtime ships
-  with filesystem and shell tools that have no business in a voice-pipeline
-  agent: `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `Task`,
-  `WebFetch`, `WebSearch`. These are explicitly disabled at the ACP
-  `initialize` call. The persona's MCP servers are the only sanctioned tool
-  surface.
+- **Built-in tool denylist on ACP init.** `@anthropic-ai/claude-agent-sdk`
+  (which `claude-agent-acp` wraps) ships filesystem and shell tools that
+  have no business in a voice-pipeline agent: `Bash`, `Read`, `Edit`,
+  `Write`, `Glob`, `Grep`, `Task`, `WebFetch`, `WebSearch`. These are
+  explicitly disabled at the ACP `initialize` call. The persona's MCP
+  servers are the only sanctioned tool surface.
 - **Structured logging.** All log lines include `conversation_id` once
   established, so per-conversation traces can be grepped out.
 

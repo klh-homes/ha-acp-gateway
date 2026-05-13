@@ -1,9 +1,11 @@
 # ha-claude-acp
 
 Home Assistant integration that lets the Assist pipeline talk to Claude via the
-[Agent Client Protocol](https://github.com/zed-industries/agent-client-protocol),
-backed by a small TypeScript gateway service that spawns `claude` subprocesses
-and routes tool calls through MCP servers configured per persona.
+[Agent Client Protocol](https://agentclientprotocol.com/), backed by a small
+TypeScript gateway service that spawns
+[`claude-agent-acp`](https://github.com/agentclientprotocol/claude-agent-acp)
+subprocesses (the ACP adapter for the official Claude Agent SDK) and routes
+tool calls through MCP servers configured per persona.
 
 ## Status
 
@@ -17,8 +19,9 @@ else is wired up yet.
 - `custom_components/claude_acp/` — Home Assistant integration (Python).
   Registers one `ConversationEntity` per config entry. Add the integration
   multiple times — once per persona deployment.
-- `service/` — TypeScript gateway. Owns ACP sessions, talks to Anthropic via
-  the `@anthropic-ai/claude-code` runtime, streams SSE back to HA.
+- `service/` — TypeScript gateway. Owns ACP sessions, spawns
+  `claude-agent-acp` (the adapter for `@anthropic-ai/claude-agent-sdk`),
+  filters ACP events, streams SSE back to HA.
 
 ## Deployment model
 
