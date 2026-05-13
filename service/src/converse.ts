@@ -6,6 +6,7 @@ import {
   ConcurrentRequestError,
   PoolAtCapacityError,
 } from "./session_pool.js";
+import { chunkForTts } from "./tts_chunker.js";
 
 export type { AcpFactory } from "./acp_session.js";
 
@@ -64,10 +65,13 @@ function friendlyErrorMessage(err: unknown): string {
   if (err instanceof ConcurrentRequestError) {
     return "I'm still working on the previous request for this conversation.";
   }
-  if (err instanceof Error) {
-    return err.message;
+  if (err instanceof Error && /subprocess exited/.test(err.message)) {
+    return "I lost contact with the assistant. Please try again.";
   }
-  return "The assistant could not complete the request.";
+  // Anything else: log the real error (the caller already did) but do not
+  // leak raw exception text to TTS. Voice users hearing "ENOENT" or
+  // "ECONNREFUSED" is unhelpful.
+  return "I had a problem completing that. Please try again.";
 }
 
 export function createConverseHandler(deps: ConverseHandlerDeps) {
@@ -112,10 +116,12 @@ export function createConverseHandler(deps: ConverseHandlerDeps) {
         });
         log.info({ sessionId: entry.sessionId }, "converse stream start");
 
-        for await (const delta of entry.session.prompt(lastUser.content)) {
+        for await (const chunk of chunkForTts(
+          entry.session.prompt(lastUser.content),
+        )) {
           await stream.writeSSE({
             event: "text",
-            data: JSON.stringify({ delta }),
+            data: JSON.stringify({ delta: chunk }),
           });
         }
         await stream.writeSSE({ event: "done", data: "{}" });

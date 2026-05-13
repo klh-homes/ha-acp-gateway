@@ -183,9 +183,9 @@ describe("POST /v1/converse — SSE stream", () => {
     expect(events.filter((e) => e.event === "done")).toHaveLength(1);
   });
 
-  it("emits an error event when the factory throws", async () => {
+  it("emits a generic friendly error when the factory throws", async () => {
     const res = await makeApp({
-      factoryThrows: new Error("spawn failed"),
+      factoryThrows: new Error("ENOENT: spawn claude-agent-acp"),
     }).request("/v1/converse", {
       method: "POST",
       headers: authedHeaders(),
@@ -198,10 +198,30 @@ describe("POST /v1/converse — SSE stream", () => {
     const events = await readSseEvents(res);
     const errors = events.filter((e) => e.event === "error");
     expect(errors).toHaveLength(1);
-    expect((JSON.parse(errors[0]!.data) as { message: string }).message).toMatch(
-      /spawn failed/,
-    );
+    const message = (JSON.parse(errors[0]!.data) as { message: string }).message;
+    // The raw "ENOENT" should never reach TTS — only the friendly default.
+    expect(message).not.toMatch(/ENOENT/);
+    expect(message).toMatch(/problem|try again/i);
     expect(events.filter((e) => e.event === "done")).toHaveLength(0);
+  });
+
+  it("emits the subprocess-exit-specific friendly message", async () => {
+    const res = await makeApp({
+      promptThrows: new Error("subprocess exited (code=137, signal=SIGKILL)"),
+    }).request("/v1/converse", {
+      method: "POST",
+      headers: authedHeaders(),
+      body: JSON.stringify({
+        conversation_id: "c1",
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const events = await readSseEvents(res);
+    const errors = events.filter((e) => e.event === "error");
+    expect(errors).toHaveLength(1);
+    const message = (JSON.parse(errors[0]!.data) as { message: string }).message;
+    expect(message).toMatch(/lost contact/i);
   });
 
   it("emits an error event when prompt throws mid-stream", async () => {
