@@ -35,9 +35,17 @@ export interface StreamHandle {
 
 export interface AcpSession {
   readonly sessionId: string;
+  /** Resolves when the underlying subprocess has exited, for any reason. */
+  readonly closed: Promise<void>;
   prompt(text: string): AsyncIterable<string>;
   close(): Promise<void>;
 }
+
+export type AcpFactory = (opts: {
+  personaDir: string;
+  oauthToken: string;
+  logger: Logger;
+}) => Promise<AcpSession>;
 
 const DEFAULT_BIN = "claude-agent-acp";
 
@@ -280,6 +288,7 @@ export async function openAcpSession(
 
   return {
     sessionId,
+    closed: handle.exited.then(() => undefined),
     async *prompt(text: string): AsyncIterable<string> {
       if (activeStream) {
         throw new Error("session is already streaming a prompt");

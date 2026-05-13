@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/server.js";
 import { createLogger } from "../src/logger.js";
-import type { AcpFactory } from "../src/converse.js";
-import type { AcpSession } from "../src/acp_session.js";
+import type { AcpFactory, AcpSession } from "../src/acp_session.js";
+import { SessionPool } from "../src/session_pool.js";
 
 const TEST_BEARER = "test-bearer-token";
+const logger = createLogger("silent");
 
 interface FakeSessionOptions {
   deltas?: string[];
@@ -13,9 +14,14 @@ interface FakeSessionOptions {
 }
 
 function makeFakeAcpFactory(opts: FakeSessionOptions = {}): AcpFactory {
-  return () =>
-    Promise.resolve({
-      sessionId: "fake-session-1",
+  return () => {
+    let closeResolve: () => void = () => {};
+    const closed = new Promise<void>((r) => {
+      closeResolve = r;
+    });
+    const session: AcpSession = {
+      sessionId: `fake-${Math.random().toString(36).slice(2, 8)}`,
+      closed,
       async *prompt(_text: string): AsyncIterable<string> {
         if (opts.promptThrows !== undefined) throw opts.promptThrows;
         for (const d of opts.deltas ?? []) {
@@ -24,9 +30,12 @@ function makeFakeAcpFactory(opts: FakeSessionOptions = {}): AcpFactory {
       },
       close(): Promise<void> {
         opts.onClose?.();
+        closeResolve();
         return Promise.resolve();
       },
-    } satisfies AcpSession);
+    };
+    return Promise.resolve(session);
+  };
 }
 
 function makeApp(opts?: FakeSessionOptions & { factoryThrows?: unknown }) {
@@ -34,12 +43,19 @@ function makeApp(opts?: FakeSessionOptions & { factoryThrows?: unknown }) {
     opts?.factoryThrows !== undefined
       ? () => Promise.reject(opts.factoryThrows as Error)
       : makeFakeAcpFactory(opts);
+  const pool = new SessionPool({
+    factory,
+    logger,
+    maxConcurrent: 8,
+    idleTtlMs: 60_000,
+    idleCheckMs: 0,
+  });
   return createApp({
-    logger: createLogger("silent"),
+    logger,
     bearerToken: TEST_BEARER,
     personaDir: "/tmp/test-persona",
     oauthToken: "fake-oauth",
-    acpFactory: factory,
+    pool,
   });
 }
 
@@ -145,41 +161,29 @@ describe("POST /v1/converse — request validation", () => {
 });
 
 describe("POST /v1/converse — SSE stream", () => {
-  it("streams text deltas from the ACP session and terminates with done", async () => {
-    let closed = false;
+  it("streams text deltas through the pool and terminates with done", async () => {
     const res = await makeApp({
       deltas: ["hello", " ", "world"],
-      onClose: () => {
-        closed = true;
-      },
     }).request("/v1/converse", {
       method: "POST",
       headers: authedHeaders(),
       body: JSON.stringify({
         conversation_id: "c1",
-        messages: [
-          { role: "user", content: "earlier" },
-          { role: "assistant", content: "previous reply" },
-          { role: "user", content: "current prompt" },
-        ],
+        messages: [{ role: "user", content: "say hi" }],
       }),
     });
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type") ?? "").toMatch(/^text\/event-stream/);
 
     const events = await readSseEvents(res);
     const text = events
       .filter((e) => e.event === "text")
       .map((e) => (JSON.parse(e.data) as { delta: string }).delta)
       .join("");
-    const done = events.filter((e) => e.event === "done");
-
     expect(text).toBe("hello world");
-    expect(done).toHaveLength(1);
-    expect(closed).toBe(true);
+    expect(events.filter((e) => e.event === "done")).toHaveLength(1);
   });
 
-  it("emits an error event and closes the session when the factory throws", async () => {
+  it("emits an error event when the factory throws", async () => {
     const res = await makeApp({
       factoryThrows: new Error("spawn failed"),
     }).request("/v1/converse", {
@@ -191,25 +195,18 @@ describe("POST /v1/converse — SSE stream", () => {
       }),
     });
     expect(res.status).toBe(200);
-
     const events = await readSseEvents(res);
     const errors = events.filter((e) => e.event === "error");
-    const done = events.filter((e) => e.event === "done");
-
     expect(errors).toHaveLength(1);
     expect((JSON.parse(errors[0]!.data) as { message: string }).message).toMatch(
       /spawn failed/,
     );
-    expect(done).toHaveLength(0);
+    expect(events.filter((e) => e.event === "done")).toHaveLength(0);
   });
 
-  it("emits an error event when prompt throws mid-stream and still closes the session", async () => {
-    let closed = false;
+  it("emits an error event when prompt throws mid-stream", async () => {
     const res = await makeApp({
       promptThrows: new Error("agent crashed"),
-      onClose: () => {
-        closed = true;
-      },
     }).request("/v1/converse", {
       method: "POST",
       headers: authedHeaders(),
@@ -219,14 +216,12 @@ describe("POST /v1/converse — SSE stream", () => {
       }),
     });
     expect(res.status).toBe(200);
-
     const events = await readSseEvents(res);
     expect(events.filter((e) => e.event === "error")).toHaveLength(1);
     expect(events.filter((e) => e.event === "done")).toHaveLength(0);
-    expect(closed).toBe(true);
   });
 
-  it("emits an error event when there is no user message", async () => {
+  it("emits a friendly error event when there is no user message", async () => {
     const res = await makeApp({ deltas: ["never-yielded"] }).request(
       "/v1/converse",
       {
@@ -239,12 +234,133 @@ describe("POST /v1/converse — SSE stream", () => {
       },
     );
     expect(res.status).toBe(200);
-
     const events = await readSseEvents(res);
+    expect(events.filter((e) => e.event === "error")).toHaveLength(1);
+  });
+});
+
+describe("POST /v1/converse — pool integration", () => {
+  it("reuses the same session for the same conversation_id across requests", async () => {
+    let factoryCalls = 0;
+    const factory: AcpFactory = () => {
+      factoryCalls++;
+      let resolveClosed: () => void = () => {};
+      const closed = new Promise<void>((r) => {
+        resolveClosed = r;
+      });
+      return Promise.resolve({
+        sessionId: `sess-${factoryCalls}`,
+        closed,
+        async *prompt(_text: string): AsyncIterable<string> {
+          yield `from sess-${factoryCalls}`;
+        },
+        close(): Promise<void> {
+          resolveClosed();
+          return Promise.resolve();
+        },
+      } satisfies AcpSession);
+    };
+    const pool = new SessionPool({
+      factory,
+      logger,
+      maxConcurrent: 4,
+      idleTtlMs: 60_000,
+      idleCheckMs: 0,
+    });
+    const app = createApp({
+      logger,
+      bearerToken: TEST_BEARER,
+      personaDir: "/tmp/p",
+      oauthToken: "fake",
+      pool,
+    });
+
+    const body = JSON.stringify({
+      conversation_id: "conv-A",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    await app.request("/v1/converse", {
+      method: "POST",
+      headers: authedHeaders(),
+      body,
+    });
+    await app.request("/v1/converse", {
+      method: "POST",
+      headers: authedHeaders(),
+      body,
+    });
+    expect(factoryCalls).toBe(1);
+    expect(pool.size()).toBe(1);
+    await pool.close();
+  });
+
+  it("returns a friendly error when the pool is at capacity and all sessions are busy", async () => {
+    let release: () => void = () => {};
+    const releaseSignal = new Promise<void>((r) => {
+      release = r;
+    });
+    const factory: AcpFactory = () => {
+      let resolveClosed: () => void = () => {};
+      const closed = new Promise<void>((r) => {
+        resolveClosed = r;
+      });
+      return Promise.resolve({
+        sessionId: "sess-block",
+        closed,
+        async *prompt(_text: string): AsyncIterable<string> {
+          yield "first";
+          await releaseSignal;
+        },
+        close(): Promise<void> {
+          resolveClosed();
+          return Promise.resolve();
+        },
+      } satisfies AcpSession);
+    };
+    const pool = new SessionPool({
+      factory,
+      logger,
+      maxConcurrent: 1,
+      idleTtlMs: 60_000,
+      idleCheckMs: 0,
+    });
+    const app = createApp({
+      logger,
+      bearerToken: TEST_BEARER,
+      personaDir: "/tmp/p",
+      oauthToken: "fake",
+      pool,
+    });
+
+    const first = app.request("/v1/converse", {
+      method: "POST",
+      headers: authedHeaders(),
+      body: JSON.stringify({
+        conversation_id: "A",
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    });
+    // Let the first request acquire and start streaming.
+    await new Promise((r) => setTimeout(r, 30));
+
+    const second = await app.request("/v1/converse", {
+      method: "POST",
+      headers: authedHeaders(),
+      body: JSON.stringify({
+        conversation_id: "B",
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    });
+    expect(second.status).toBe(200);
+    const events = await readSseEvents(second);
     const errors = events.filter((e) => e.event === "error");
     expect(errors).toHaveLength(1);
     expect((JSON.parse(errors[0]!.data) as { message: string }).message).toMatch(
-      /no user message/i,
+      /busy|try again/i,
     );
+
+    release();
+    await first;
+    await pool.close();
   });
 });

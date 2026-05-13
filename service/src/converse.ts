@@ -1,8 +1,13 @@
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { openAcpSession } from "./acp_session.js";
-import type { AcpSession } from "./acp_session.js";
 import type { Logger } from "./logger.js";
+import type { SessionPool } from "./session_pool.js";
+import {
+  ConcurrentRequestError,
+  PoolAtCapacityError,
+} from "./session_pool.js";
+
+export type { AcpFactory } from "./acp_session.js";
 
 interface ConverseMessage {
   role: string;
@@ -45,25 +50,27 @@ function validateBody(body: unknown): ConverseRequest | null {
   return out;
 }
 
-export type AcpFactory = (opts: {
-  personaDir: string;
-  oauthToken: string;
-  logger: Logger;
-}) => Promise<AcpSession>;
-
-const defaultAcpFactory: AcpFactory = (opts) => openAcpSession(opts);
-
 export interface ConverseHandlerDeps {
   logger: Logger;
   personaDir: string;
   oauthToken: string;
-  /** Test-injection point. Defaults to spawning a real claude-agent-acp. */
-  acpFactory?: AcpFactory;
+  pool: SessionPool;
+}
+
+function friendlyErrorMessage(err: unknown): string {
+  if (err instanceof PoolAtCapacityError) {
+    return "I'm busy with other requests right now. Please try again in a moment.";
+  }
+  if (err instanceof ConcurrentRequestError) {
+    return "I'm still working on the previous request for this conversation.";
+  }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return "The assistant could not complete the request.";
 }
 
 export function createConverseHandler(deps: ConverseHandlerDeps) {
-  const acpFactory = deps.acpFactory ?? defaultAcpFactory;
-
   return async (c: Context) => {
     let body: unknown;
     try {
@@ -92,20 +99,20 @@ export function createConverseHandler(deps: ConverseHandlerDeps) {
         return;
       }
 
-      let session: AcpSession | null = null;
+      let entry: Awaited<ReturnType<SessionPool["acquire"]>> | null = null;
       try {
         log.info(
           { message_count: req.messages.length },
-          "opening ACP session",
+          "acquiring ACP session from pool",
         );
-        session = await acpFactory({
+        entry = await deps.pool.acquire(req.conversation_id, {
           personaDir: deps.personaDir,
           oauthToken: deps.oauthToken,
           logger: log,
         });
-        log.info({ sessionId: session.sessionId }, "converse stream start");
+        log.info({ sessionId: entry.sessionId }, "converse stream start");
 
-        for await (const delta of session.prompt(lastUser.content)) {
+        for await (const delta of entry.session.prompt(lastUser.content)) {
           await stream.writeSSE({
             event: "text",
             data: JSON.stringify({ delta }),
@@ -115,22 +122,13 @@ export function createConverseHandler(deps: ConverseHandlerDeps) {
         log.info("converse stream done");
       } catch (err) {
         log.error({ err }, "converse stream failed");
-        const message =
-          err instanceof Error
-            ? err.message
-            : "The assistant could not complete the request.";
+        const message = friendlyErrorMessage(err);
         await stream.writeSSE({
           event: "error",
           data: JSON.stringify({ message }),
         });
       } finally {
-        if (session) {
-          try {
-            await session.close();
-          } catch (err) {
-            log.warn({ err }, "session close failed");
-          }
-        }
+        entry?.release();
       }
     });
   };

@@ -1,16 +1,15 @@
 import { Hono } from "hono";
 import { bearerAuth } from "./auth.js";
 import { createConverseHandler } from "./converse.js";
-import type { AcpFactory } from "./converse.js";
 import type { Logger } from "./logger.js";
+import type { SessionPool } from "./session_pool.js";
 
 export interface AppDeps {
   logger: Logger;
   bearerToken: string;
   personaDir: string;
   oauthToken: string;
-  /** Test-injection point passed through to the converse handler. */
-  acpFactory?: AcpFactory;
+  pool: SessionPool;
 }
 
 export function createApp(deps: AppDeps): Hono {
@@ -27,7 +26,7 @@ export function createApp(deps: AppDeps): Hono {
       logger: deps.logger,
       personaDir: deps.personaDir,
       oauthToken: deps.oauthToken,
-      ...(deps.acpFactory ? { acpFactory: deps.acpFactory } : {}),
+      pool: deps.pool,
     }),
   );
 

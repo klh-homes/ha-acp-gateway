@@ -4,6 +4,8 @@ export interface Config {
   bearerToken: string;
   personaDir: string;
   oauthToken: string;
+  maxConcurrentSessions: number;
+  sessionIdleTtlSec: number;
 }
 
 function readInt(name: string, fallback: number): number {
@@ -31,5 +33,7 @@ export function loadConfig(): Config {
     bearerToken: readRequired("BEARER_TOKEN"),
     personaDir: readRequired("PERSONA_DIR"),
     oauthToken: readRequired("CLAUDE_CODE_OAUTH_TOKEN"),
+    maxConcurrentSessions: readInt("MAX_CONCURRENT_SESSIONS", 8),
+    sessionIdleTtlSec: readInt("SESSION_IDLE_TTL_SEC", 1800),
   };
 }
