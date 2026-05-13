@@ -45,30 +45,44 @@ Why per-deployment, not per-request:
 The cost is N container processes' baseline memory. For a homelab with
 3–5 personas, this is well under 1 GB and acceptable.
 
-## Persona configuration
+## Persona = a Claude Code $HOME
 
-Each deployment mounts a **persona directory** at the path given by
-`PERSONA_DIR` (default `/config/persona`). The service reads it on startup
-and forwards relevant fields into the ACP `initialize` call.
+A persona's configuration is **whatever `claude-agent-acp` reads from its
+`$HOME` directory on startup**. The service does not define or parse its own
+schema — it just spawns the subprocess with `HOME` pointed at the mounted
+persona directory.
 
-V1 persona dir layout:
+That directory is Claude Code's native config root, identical in layout to
+what a developer would maintain locally. A typical persona looks like:
 
 ```
 persona/
-├── system_prompt.md        # raw text → ACP customSystemPrompt
-├── mcp_servers.json        # full MCP server config → ACP mcpServers
-└── settings.json           # model, max_tokens default, tool restrictions
+└── .claude/
+    ├── CLAUDE.md         # system prompt (Claude Code convention)
+    ├── settings.json     # model, mcpServers, permissions
+    └── (skills/, plugins/, hooks/ — all native Claude Code files)
 ```
 
-The actual persona content lives in the **deployment repo** (for example
-`klh-homelab`), not in this repo. Once `/v1/converse` lands and the on-disk
-schema is locked, this repo will ship `examples/personas/` as copy-and-edit
-templates. Treat persona dirs as deployment data, not source code.
+An empty persona directory is valid — the adapter falls back to defaults
+(model "default" = Sonnet 4.6, permission mode "default", no MCP servers).
+New personas are created by copying an existing directory, editing the
+files inside, and starting a new deployment; no service code change.
 
-The persona dir is read at service startup. Reloading currently requires a
-container restart; SIGHUP-driven hot reload is V2.
+The persona directory is mounted read-only. The adapter does not write to
+`HOME` during normal operation; OAuth is passed via env, not cached on disk
+(see [Authentication](#authentication)).
 
-V2 may add `skills/*.md` discovered from the persona dir; deferred.
+Real persona content lives in the **deployment repo** (e.g. `klh-homelab`),
+not in this repo. Once V1 stabilizes, this repo will ship a couple of small
+reference directories under `examples/personas/`.
+
+### Authentication
+
+`CLAUDE_CODE_OAUTH_TOKEN` is read directly from the subprocess environment
+by `@anthropic-ai/claude-agent-sdk`. No `claude auth login` ceremony is
+needed inside the container and the persona dir does not need to be writable
+for credential caching. One Anthropic account's token can be reused across
+all persona deployments.
 
 ## Service responsibilities
 
@@ -88,13 +102,24 @@ The service is intentionally thin about agent behavior, thick about transport.
 - **SSE streaming with TTS-friendly chunking.** Forward
   `agent_message_chunk.text` deltas to HA, but emit chunk boundaries at
   punctuation or every ≥60 chars so the TTS engine has clean splits.
-- **ACP event classification.** Pass `agent_message_chunk` text through; log
-  but drop `thinking`, `plan`, `status`; log `tool_use` / `tool_result` at
-  info level (essential for debugging) without forwarding to HA.
-- **Tool permission auto-reply.** Voice cannot pop a confirmation dialog. All
-  `session/request_permission` requests from the ACP subprocess are
-  auto-approved and logged. (V2 may add an allowlist filter; V1 trusts the
-  persona's MCP configuration as the access control surface.)
+- **ACP event classification.** Forward `agent_message_chunk` text (skipping
+  empty leading chunks) to the SSE stream. Drop the following silently
+  unless `LOG_LEVEL=debug`: `available_commands_update` (large, fires once
+  per session), `usage_update` (token / cost telemetry — V2 may surface),
+  `agent_thought_chunk`, `user_message_chunk` (echoes our own prompt),
+  `current_mode_update`, `config_option_update`, `session_info_update`,
+  `plan`. Log `tool_call` / `tool_call_update` at info level — essential for
+  debugging voice failures — but do not forward them.
+- **Session mode = `bypassPermissions`.** Immediately after `newSession`,
+  call `setSessionMode({ modeId: "bypassPermissions" })`. The adapter
+  natively supports this mode and skips all permission prompts. Tool access
+  is gated by the persona's `settings.json` (Claude Code's `permissions`
+  block + the MCP server list) — not by ACP-level filtering, not by
+  service-side denylists.
+- **`requestPermission` auto-allow as defense-in-depth.** Under
+  `bypassPermissions` the adapter shouldn't call `requestPermission`, but
+  the service still implements the `Client` method: auto-select the first
+  `allow_*` option and log a warning so any actual prompt surfaces in logs.
 - **Session pool.** Key by `conversation_id`. Idle TTL 30 min. Hard cap 8
   concurrent. Stall detection: if no event for N seconds during an active
   request, kill the subprocess and surface a clean error to HA.
@@ -102,16 +127,11 @@ The service is intentionally thin about agent behavior, thick about transport.
   must return text the TTS engine can speak — not let HA hang on the SSE
   connection.
 - **Bearer auth** on `/v1/converse`. `/healthz` stays open.
-- **Subprocess hygiene.** Spawn with `env: {}` plus an explicit allowlist
-  (`HOME`, `PATH`, `USER`, plus the OAuth token and any persona-specific
-  overrides). Never leak the service's own `BEARER_TOKEN` or unrelated host
-  env into the child.
-- **Built-in tool denylist on ACP init.** `@anthropic-ai/claude-agent-sdk`
-  (which `claude-agent-acp` wraps) ships filesystem and shell tools that
-  have no business in a voice-pipeline agent: `Bash`, `Read`, `Edit`,
-  `Write`, `Glob`, `Grep`, `Task`, `WebFetch`, `WebSearch`. These are
-  explicitly disabled at the ACP `initialize` call. The persona's MCP
-  servers are the only sanctioned tool surface.
+- **Subprocess hygiene.** Spawn with a clean `env: { HOME: PERSONA_DIR,
+  PATH: ..., USER: ..., CLAUDE_CODE_OAUTH_TOKEN: ... }`. No other env is
+  inherited unless explicitly listed. In particular `BEARER_TOKEN`,
+  unrelated host env, and the service's own log config never reach the
+  child.
 - **Structured logging.** All log lines include `conversation_id` once
   established, so per-conversation traces can be grepped out.
 
@@ -138,15 +158,44 @@ wake words → different pipelines → different entities → different deployme
 
 ## Stream filtering
 
-The service forwards only `agent_message_chunk` events whose payload is text.
-Other ACP event types are dropped from the SSE stream but logged. The SSE
-stream is terminated by an explicit `done` event so HA knows the response
-ended cleanly (not a timeout).
+The service forwards only `agent_message_chunk` events whose `content.type`
+is `text` and whose `text` is non-empty. The first chunk of a response is
+often `text: ""` (adapter convention) and must be skipped. All other ACP
+update kinds are dropped from the SSE stream (see [Service
+responsibilities](#service-responsibilities) for the per-kind handling).
+
+The SSE stream is terminated by an explicit `done` event so HA knows the
+response ended cleanly (not a timeout). On error the service emits a
+single `error` event with a TTS-friendly message, then closes the stream.
+
+### Spawn / handshake order
+
+```
+spawn claude-agent-acp (cwd = HOME, env_clear + allowlist)
+  → initialize({ protocolVersion: 1, clientCapabilities: { fs: {} },
+                 clientInfo: { name, version } })
+  → newSession({ cwd: HOME, mcpServers: [] })
+  → setSessionMode({ sessionId, modeId: "bypassPermissions" })
+  → [per HA request] prompt({ sessionId, prompt: [{ type: "text", text }] })
+       └─ sessionUpdate notifications fan out (filter → SSE)
+       └─ prompt resolves with stopReason → emit `done`
+```
+
+`mcpServers: []` in `newSession` is intentional — MCP configuration comes
+from the persona's `settings.json`, not from the wire request.
+
+### Token economics
+
+The adapter loads a baseline set of built-in slash commands (~16 K cached
+tokens on the first turn of a session, regardless of HOME contents). These
+tokens enter Anthropic's prompt cache and subsequent turns in the same
+session reuse them at the 90 % cached-read discount. The session pool's
+long idle TTL exists partly to amortize this cost.
 
 ## Session pool
 
-Keyed by `conversation_id`. Each session holds one spawned `claude`
-subprocess and its ACP connection.
+Keyed by `conversation_id`. Each session holds one spawned
+`claude-agent-acp` subprocess and its ACP connection.
 
 - Lazy creation on first request for a `conversation_id`.
 - Idle TTL: 30 min.
@@ -178,6 +227,9 @@ subprocess and its ACP connection.
 
 - Not an agent framework. No memory, no RAG, no tool registry, no persona
   switching at runtime.
+- **Not Claude Code's config layer.** The persona directory IS Claude Code's
+  native config root. The service does not parse, validate, or translate
+  it — the adapter reads its own files.
 - Not a generic gateway. It speaks ACP on one side and HA's SSE delta format
   on the other, on purpose.
 - Not opinionated about deployment topology beyond "one container per
