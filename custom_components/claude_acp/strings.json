@@ -3,12 +3,11 @@
     "step": {
       "user": {
         "title": "Claude Agent (ACP)",
-        "description": "Configure the gateway service that bridges Home Assistant to Claude.",
+        "description": "Connect this Home Assistant to one Claude persona deployment. Add the integration once per persona.",
         "data": {
+          "name": "Persona name",
           "gateway_url": "Gateway URL",
           "bearer_token": "Bearer token",
-          "model": "Model",
-          "system_prompt": "System prompt (optional override)",
           "max_tokens": "Max tokens",
           "request_timeout_s": "Request timeout (seconds)"
         }

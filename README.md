@@ -3,11 +3,11 @@
 Home Assistant integration that lets the Assist pipeline talk to Claude via the
 [Agent Client Protocol](https://github.com/zed-industries/agent-client-protocol),
 backed by a small TypeScript gateway service that spawns `claude` subprocesses
-and routes tool calls through [ha-mcp](https://github.com/voska/hass-mcp).
+and routes tool calls through MCP servers configured per persona.
 
 ## Status
 
-V1 in progress. The acceptance criteria are tracked in `docs/ARCHITECTURE.md`.
+V1 in progress. Acceptance criteria are tracked in `docs/ARCHITECTURE.md`.
 
 Current state: repo skeleton only. The service exposes `GET /healthz`. Nothing
 else is wired up yet.
@@ -15,9 +15,25 @@ else is wired up yet.
 ## Components
 
 - `custom_components/claude_acp/` — Home Assistant integration (Python).
-  Registers a `ConversationEntity` named "Claude Agent (ACP)".
+  Registers one `ConversationEntity` per config entry. Add the integration
+  multiple times — once per persona deployment.
 - `service/` — TypeScript gateway. Owns ACP sessions, talks to Anthropic via
   the `@anthropic-ai/claude-code` runtime, streams SSE back to HA.
+
+## Deployment model
+
+One persona = one deployment of `service/`. A persona is defined by a
+directory mounted at `PERSONA_DIR` containing `system_prompt.md`,
+`mcp_servers.json`, and `settings.json`. To add a new persona, spin up another
+deployment with a different persona directory and bearer token, then add a
+second integration entry in Home Assistant pointing at it.
+
+Real persona directories belong to the deployment repository (the homelab
+that operates this service), not to this repo. This repo will ship
+`examples/personas/` as templates once V1's `/v1/converse` lands.
+
+See `docs/ARCHITECTURE.md` for the full rationale and the thin/thick service
+boundary.
 
 ## Quickstart (service, local dev)
 
