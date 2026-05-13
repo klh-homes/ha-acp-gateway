@@ -90,4 +90,5 @@ class ClaudeAcpConversationEntity(conversation.ConversationEntity):
         return conversation.ConversationResult(
             response=intent_response,
             conversation_id=conversation_id,
+            continue_conversation=True,
         )
