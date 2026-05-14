@@ -2,10 +2,18 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../src/server.js";
 import { createLogger } from "../src/logger.js";
 import type { AcpFactory, AcpSession } from "../src/acp_session.js";
+import type { AgentLauncher } from "../src/agents/types.js";
 import { SessionPool } from "../src/session_pool.js";
 
 const TEST_BEARER = "test-bearer-token";
 const logger = createLogger("silent");
+
+const fakeLauncher: AgentLauncher = {
+  id: "claude",
+  spawn() {
+    throw new Error("spawn should not be called in converse tests (fake factory used)");
+  },
+};
 
 interface FakeSessionOptions {
   deltas?: string[];
@@ -54,7 +62,7 @@ function makeApp(opts?: FakeSessionOptions & { factoryThrows?: unknown }) {
     logger,
     bearerToken: TEST_BEARER,
     personaDir: "/tmp/test-persona",
-    oauthToken: "fake-oauth",
+    launcher: fakeLauncher,
     pool,
   });
 }
@@ -291,7 +299,7 @@ describe("POST /v1/converse — singleton session affinity", () => {
       logger,
       bearerToken: TEST_BEARER,
       personaDir: "/tmp/p",
-      oauthToken: "fake",
+      launcher: fakeLauncher,
       pool,
       sessionAffinity: "entity",
     });
@@ -347,7 +355,7 @@ describe("POST /v1/converse — pool integration", () => {
       logger,
       bearerToken: TEST_BEARER,
       personaDir: "/tmp/p",
-      oauthToken: "fake",
+      launcher: fakeLauncher,
       pool,
     });
 
@@ -404,7 +412,7 @@ describe("POST /v1/converse — pool integration", () => {
       logger,
       bearerToken: TEST_BEARER,
       personaDir: "/tmp/p",
-      oauthToken: "fake",
+      launcher: fakeLauncher,
       pool,
     });
 

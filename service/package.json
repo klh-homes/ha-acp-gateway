@@ -1,8 +1,8 @@
 {
-  "name": "@klh-homes/ha-claude-acp-service",
-  "version": "0.1.0",
+  "name": "@klh-homes/ha-acp-gateway-service",
+  "version": "0.2.0",
   "private": true,
-  "description": "Gateway service that bridges Home Assistant's Assist pipeline to Claude via the Agent Client Protocol.",
+  "description": "Gateway service that bridges Home Assistant's Assist pipeline to ACP-speaking coding agents (Claude, Codex, ...).",
   "license": "MIT",
   "type": "module",
   "engines": {

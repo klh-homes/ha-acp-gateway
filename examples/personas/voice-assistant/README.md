@@ -1,7 +1,8 @@
 # voice-assistant
 
-A realistic Home Assistant voice agent template. Bakes its persona content
-on top of the upstream ha-claude-acp image and registers MCP servers from
+A realistic Home Assistant voice agent template using **Claude** as the
+underlying ACP agent (`ACP_AGENT=claude`). Bakes its persona content on
+top of the upstream ha-acp-gateway image and registers MCP servers from
 runtime env via `claude mcp add`, so secrets never enter the image layer.
 
 Copy this whole directory into your deployment repo, rename it to taste
@@ -12,7 +13,7 @@ compose service block.
 
 | File | Purpose |
 |---|---|
-| `Dockerfile` | Overlay on top of `ghcr.io/klh-homes/ha-claude-acp:<tag>`. Adds tini, rsync, the `claude` CLI, your persona content, optional skill bakes, and the entrypoint wrapper. |
+| `Dockerfile` | Overlay on top of `ghcr.io/klh-homes/ha-acp-gateway:<tag>`. Adds tini, rsync, the `claude` CLI, your persona content, optional skill bakes, and the entrypoint wrapper. |
 | `entrypoint.sh` | Sources `lib/*.sh` then `exec`s the upstream `CMD`. |
 | `lib/install-config.sh` | cp's CLAUDE.md + settings.json from image bake into `$PERSONA_DIR/.claude/`. Runs on every start. |
 | `lib/install-skills.sh` | rsyncs each `/opt/skills-bake/<name>/` into `$PERSONA_DIR/.claude/skills/<name>/`. |

@@ -1,4 +1,4 @@
-"""Claude Agent (ACP) integration for Home Assistant."""
+"""ACP Gateway integration for Home Assistant."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from .const import (
     DEFAULT_REQUEST_TIMEOUT_S,
     DOMAIN,
 )
-from .coordinator import ClaudeAcpClient
+from .coordinator import AcpGatewayClient
 
 __all__ = ["DOMAIN", "async_setup_entry", "async_unload_entry"]
 
@@ -21,8 +21,8 @@ PLATFORMS: list[Platform] = [Platform.CONVERSATION]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up one Claude persona from a config entry."""
-    client = ClaudeAcpClient(
+    """Set up one persona from a config entry."""
+    client = AcpGatewayClient(
         hass,
         entry.data[CONF_GATEWAY_URL],
         entry.data[CONF_BEARER_TOKEN],
@@ -35,7 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a Claude persona."""
+    """Unload a persona."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { AgentLauncher } from "./agents/types.js";
 import { bearerAuth } from "./auth.js";
 import type { SessionAffinity } from "./config.js";
 import { createConverseHandler } from "./converse.js";
@@ -9,7 +10,7 @@ export interface AppDeps {
   logger: Logger;
   bearerToken: string;
   personaDir: string;
-  oauthToken: string;
+  launcher: AgentLauncher;
   pool: SessionPool;
   sessionAffinity?: SessionAffinity;
 }
@@ -18,7 +19,7 @@ export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
 
   app.get("/healthz", (c) => {
-    return c.json({ status: "ok" });
+    return c.json({ status: "ok", agent: deps.launcher.id });
   });
 
   app.use("/v1/*", bearerAuth(deps.bearerToken));
@@ -27,7 +28,7 @@ export function createApp(deps: AppDeps): Hono {
     createConverseHandler({
       logger: deps.logger,
       personaDir: deps.personaDir,
-      oauthToken: deps.oauthToken,
+      launcher: deps.launcher,
       pool: deps.pool,
       ...(deps.sessionAffinity ? { sessionAffinity: deps.sessionAffinity } : {}),
     }),

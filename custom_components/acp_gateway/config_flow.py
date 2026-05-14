@@ -1,4 +1,4 @@
-"""Config flow for Claude Agent (ACP)."""
+"""Config flow for ACP Gateway."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from .const import (
     DEFAULT_REQUEST_TIMEOUT_S,
     DOMAIN,
 )
-from .coordinator import ClaudeAcpClient, ClaudeAcpConnectError
+from .coordinator import AcpGatewayClient, AcpGatewayConnectError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,8 +33,8 @@ USER_SCHEMA = vol.Schema(
 )
 
 
-class ClaudeAcpConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Each config entry is one Claude persona deployment."""
+class AcpGatewayConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Each config entry is one persona deployment."""
 
     VERSION = 1
 
@@ -45,7 +45,7 @@ class ClaudeAcpConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            client = ClaudeAcpClient(
+            client = AcpGatewayClient(
                 self.hass,
                 user_input[CONF_GATEWAY_URL],
                 user_input[CONF_BEARER_TOKEN],
@@ -53,7 +53,7 @@ class ClaudeAcpConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             try:
                 await client.healthcheck()
-            except ClaudeAcpConnectError as err:
+            except AcpGatewayConnectError as err:
                 _LOGGER.warning("Healthcheck failed during config: %s", err)
                 errors["base"] = "cannot_connect"
 

@@ -1,4 +1,4 @@
-"""ConversationEntity backed by the ha-claude-acp gateway."""
+"""ConversationEntity backed by the ha-acp-gateway service."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .coordinator import (
-    ClaudeAcpClient,
-    ClaudeAcpConnectError,
-    ClaudeAcpRemoteError,
+    AcpGatewayClient,
+    AcpGatewayConnectError,
+    AcpGatewayRemoteError,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,17 +27,17 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Register one ConversationEntity per config entry."""
-    client: ClaudeAcpClient = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([ClaudeAcpConversationEntity(entry, client)])
+    client: AcpGatewayClient = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([AcpGatewayConversationEntity(entry, client)])
 
 
-class ClaudeAcpConversationEntity(conversation.ConversationEntity):
+class AcpGatewayConversationEntity(conversation.ConversationEntity):
     """Bridge HA's Assist pipeline to the ACP gateway."""
 
     _attr_has_entity_name = True
     _attr_supports_streaming = False
 
-    def __init__(self, entry: ConfigEntry, client: ClaudeAcpClient) -> None:
+    def __init__(self, entry: ConfigEntry, client: AcpGatewayClient) -> None:
         self._entry = entry
         self._client = client
         self._attr_unique_id = entry.entry_id
@@ -62,7 +62,7 @@ class ClaudeAcpConversationEntity(conversation.ConversationEntity):
             async for delta in self._client.converse(conversation_id, messages):
                 chunks.append(delta)
             speech = "".join(chunks).strip()
-        except ClaudeAcpRemoteError as err:
+        except AcpGatewayRemoteError as err:
             _LOGGER.warning(
                 "Gateway returned an error event: %s",
                 err,
@@ -72,7 +72,7 @@ class ClaudeAcpConversationEntity(conversation.ConversationEntity):
                 response=intent_response,
                 conversation_id=conversation_id,
             )
-        except ClaudeAcpConnectError as err:
+        except AcpGatewayConnectError as err:
             _LOGGER.error("Gateway connection failed: %s", err)
             intent_response.async_set_error(
                 intent.IntentResponseErrorCode.UNKNOWN,
@@ -98,10 +98,10 @@ def _ends_with_question(speech: str) -> bool:
     """True if the reply ends with a question mark (ASCII or full-width).
 
     Used to decide whether HA's Assist pipeline should keep the satellite
-    listening for a follow-up without another wake word. Claude is
-    instructed via CLAUDE.md to end any reply that needs the user to
-    respond with a question mark; statements get the conversation closed
-    so the satellite returns to wake-word mode.
+    listening for a follow-up without another wake word. The agent is
+    instructed via its persona prompt to end any reply that needs the
+    user to respond with a question mark; statements close the
+    conversation so the satellite returns to wake-word mode.
     """
     stripped = speech.rstrip()
     return stripped.endswith(("?", "？"))  # noqa: RUF001 — both forms are intentional

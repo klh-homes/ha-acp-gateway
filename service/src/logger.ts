@@ -3,7 +3,7 @@ import { pino } from "pino";
 export function createLogger(level: string) {
   return pino({
     level,
-    base: { service: "ha-claude-acp" },
+    base: { service: "ha-acp-gateway" },
     timestamp: pino.stdTimeFunctions.isoTime,
   });
 }

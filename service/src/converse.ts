@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
+import type { AgentLauncher } from "./agents/types.js";
 import type { SessionAffinity } from "./config.js";
 import type { Logger } from "./logger.js";
 import type { SessionPool } from "./session_pool.js";
@@ -61,7 +62,7 @@ function validateBody(body: unknown): ConverseRequest | null {
 export interface ConverseHandlerDeps {
   logger: Logger;
   personaDir: string;
-  oauthToken: string;
+  launcher: AgentLauncher;
   pool: SessionPool;
   /** Default "conversation" — pool keys on each request's conversation_id.
    *  "entity" collapses every request to one singleton session, trading
@@ -126,7 +127,7 @@ export function createConverseHandler(deps: ConverseHandlerDeps) {
         );
         entry = await deps.pool.acquire(poolKey, {
           personaDir: deps.personaDir,
-          oauthToken: deps.oauthToken,
+          launcher: deps.launcher,
           logger: log,
         });
         log.info({ sessionId: entry.sessionId }, "converse stream start");

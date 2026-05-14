@@ -1,4 +1,4 @@
-"""HTTP client that talks to the ha-claude-acp gateway service."""
+"""HTTP client that talks to the ha-acp-gateway service service."""
 
 from __future__ import annotations
 
@@ -14,19 +14,19 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 _LOGGER = logging.getLogger(__name__)
 
 
-class ClaudeAcpError(Exception):
+class AcpGatewayError(Exception):
     """Base error for gateway interactions."""
 
 
-class ClaudeAcpConnectError(ClaudeAcpError):
+class AcpGatewayConnectError(AcpGatewayError):
     """The gateway could not be reached or healthz failed."""
 
 
-class ClaudeAcpRemoteError(ClaudeAcpError):
+class AcpGatewayRemoteError(AcpGatewayError):
     """The gateway returned an SSE `error` event (TTS-readable message)."""
 
 
-class ClaudeAcpClient:
+class AcpGatewayClient:
     """Thin async client for POST /v1/converse + SSE parsing."""
 
     def __init__(
@@ -42,7 +42,7 @@ class ClaudeAcpClient:
         self._timeout_s = timeout_s
 
     async def healthcheck(self) -> None:
-        """Hit /healthz; raise ClaudeAcpConnectError on any failure."""
+        """Hit /healthz; raise AcpGatewayConnectError on any failure."""
         session = async_get_clientsession(self._hass)
         try:
             async with session.get(
@@ -50,9 +50,9 @@ class ClaudeAcpClient:
                 timeout=aiohttp.ClientTimeout(total=5),
             ) as resp:
                 if resp.status != 200:
-                    raise ClaudeAcpConnectError(f"healthz returned HTTP {resp.status}")
+                    raise AcpGatewayConnectError(f"healthz returned HTTP {resp.status}")
         except (TimeoutError, aiohttp.ClientError) as err:
-            raise ClaudeAcpConnectError(str(err)) from err
+            raise AcpGatewayConnectError(str(err)) from err
 
     async def converse(
         self,
@@ -61,8 +61,8 @@ class ClaudeAcpClient:
     ) -> AsyncIterator[str]:
         """POST /v1/converse and yield text deltas from the SSE stream.
 
-        Raises ClaudeAcpConnectError on transport-level problems and
-        ClaudeAcpRemoteError on a server-emitted `error` event.
+        Raises AcpGatewayConnectError on transport-level problems and
+        AcpGatewayRemoteError on a server-emitted `error` event.
         """
         session = async_get_clientsession(self._hass)
         url = f"{self._gateway_url}/v1/converse"
@@ -80,10 +80,10 @@ class ClaudeAcpClient:
                 timeout=aiohttp.ClientTimeout(total=self._timeout_s),
             ) as resp:
                 if resp.status == 401:
-                    raise ClaudeAcpConnectError("gateway rejected bearer token (401)")
+                    raise AcpGatewayConnectError("gateway rejected bearer token (401)")
                 if resp.status >= 400:
                     text = await resp.text()
-                    raise ClaudeAcpConnectError(
+                    raise AcpGatewayConnectError(
                         f"gateway HTTP {resp.status}: {text[:200]}"
                     )
 
@@ -96,13 +96,13 @@ class ClaudeAcpClient:
                         return
                     elif event == "error":
                         message = data.get("message") or "Unknown error"
-                        raise ClaudeAcpRemoteError(message)
+                        raise AcpGatewayRemoteError(message)
                     else:
                         _LOGGER.debug("ignoring SSE event: %s", event)
         except aiohttp.ClientError as err:
-            raise ClaudeAcpConnectError(str(err)) from err
+            raise AcpGatewayConnectError(str(err)) from err
         except TimeoutError as err:
-            raise ClaudeAcpConnectError("gateway timed out") from err
+            raise AcpGatewayConnectError("gateway timed out") from err
 
 
 async def _parse_sse(
