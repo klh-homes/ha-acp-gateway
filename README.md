@@ -46,7 +46,7 @@ Set `ACP_AGENT` per deployment:
 | `ACP_AGENT` | Auth env vars | Spawned binary |
 |---|---|---|
 | `claude` (default) | `CLAUDE_CODE_OAUTH_TOKEN` | `claude-agent-acp` |
-| `codex` | `OPENAI_API_KEY` (or pre-`codex login` in HOME); optional `CODEX_PATH` | `acp-server` |
+| `codex` | `OPENAI_API_KEY` (or pre-`codex login` in HOME); optional `CODEX_PATH` | `codex-acp` |
 
 Each persona deployment is one agent. To run Jarvis on Claude and
 Friday on Codex, run two separate service containers with their own

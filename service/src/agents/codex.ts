@@ -3,13 +3,15 @@ import { spawnAcpSubprocess } from "./claude.js";
 import type { AgentLauncher } from "./types.js";
 
 /**
- * `@agentclientprotocol/codex-acp` installs a binary named `acp-server`
- * that bridges Codex CLI through ACP. The wrapper itself does not own
- * auth — the underlying `codex` binary uses OPENAI_API_KEY (or its own
- * stored login state). `CODEX_PATH` tells `acp-server` where to find the
- * codex binary; if unset, it falls back to whichever `codex` is on PATH.
+ * `@zed-industries/codex-acp` (Zed's ACP server for Codex; the de-facto
+ * upstream — far more mature than the `@agentclientprotocol/codex-acp`
+ * variant) installs a binary named `codex-acp` that bridges Codex CLI
+ * through ACP. The wrapper itself does not own auth — the underlying
+ * `codex` binary uses OPENAI_API_KEY (or its own stored login state).
+ * `CODEX_PATH` lets the wrapper find the codex binary if it isn't on
+ * PATH.
  */
-const DEFAULT_BIN = "acp-server";
+const DEFAULT_BIN = "codex-acp";
 
 export interface CodexLauncherOptions {
   /** Passed through to the subprocess. Required unless the user has run

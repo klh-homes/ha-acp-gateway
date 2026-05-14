@@ -14,7 +14,7 @@ Wake word "Hey Jarvis" → Assist pipeline "Jarvis" → ConversationEntity "Jarv
                                                               │
                                                               │  ACP stdio JSON-RPC
                                                               ▼
-                            claude-agent-acp │ acp-server (codex) │ …   (selected by ACP_AGENT)
+                            claude-agent-acp │ codex-acp │ …   (selected by ACP_AGENT)
                                                               │  uses
                                                               ▼
                   @anthropic-ai/claude-agent-sdk │ codex CLI │ …
@@ -35,7 +35,7 @@ all stay identical.
 | `ACP_AGENT` | Wrapper binary | Auth env vars | Persona config root |
 |---|---|---|---|
 | `claude` (default) | `claude-agent-acp` | `CLAUDE_CODE_OAUTH_TOKEN` | `$HOME/.claude/` |
-| `codex` | `acp-server` (from `@agentclientprotocol/codex-acp`) | `OPENAI_API_KEY` (or pre-`codex login`); optional `CODEX_PATH` | `$HOME/.codex/` |
+| `codex` | `codex-acp` (from `@zed-industries/codex-acp`) | `OPENAI_API_KEY` (or pre-`codex login`); optional `CODEX_PATH` | `$HOME/.codex/` |
 
 Adding a new agent (Gemini CLI, Kiro, OpenCode, …) means writing one new
 file under `service/src/agents/<name>.ts` that exports a `createXLauncher`
