@@ -22,11 +22,15 @@ RUN apt-get update \
 # (claude-code / codex) is NOT installed here — the persona Dockerfile
 # layers in whichever runtime its agent needs.
 #
-#   claude → claude-agent-acp wraps @anthropic-ai/claude-agent-sdk
-#   codex  → acp-server (from @agentclientprotocol/codex-acp) wraps codex CLI
+#   claude → claude-agent-acp (binary: `claude-agent-acp`)
+#            wraps @anthropic-ai/claude-agent-sdk
+#   codex  → @zed-industries/codex-acp (binary: `codex-acp`)
+#            wraps codex CLI; the @agentclientprotocol/codex-acp variant
+#            exists but @zed-industries one is the de-facto upstream and
+#            far more mature.
 RUN npm install -g \
       @agentclientprotocol/claude-agent-acp \
-      @agentclientprotocol/codex-acp
+      @zed-industries/codex-acp
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

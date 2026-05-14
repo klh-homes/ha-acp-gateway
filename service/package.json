@@ -1,6 +1,6 @@
 {
   "name": "@klh-homes/ha-acp-gateway-service",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Gateway service that bridges Home Assistant's Assist pipeline to ACP-speaking coding agents (Claude, Codex, ...).",
   "license": "MIT",
