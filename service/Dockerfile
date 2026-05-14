@@ -16,18 +16,25 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends wget ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# claude-agent-acp is the ACP server adapter that wraps @anthropic-ai/claude-agent-sdk
-# and exposes the binary on PATH. The service spawns `claude-agent-acp` as the ACP
-# subprocess; the Claude CLI itself does not speak ACP.
-RUN npm install -g @agentclientprotocol/claude-agent-acp
+# ACP adapter wrappers — small npm packages that expose the agent runtimes
+# over ACP via a stdio binary on PATH. The service picks one to spawn per
+# request based on ACP_AGENT (see config.ts). The underlying CLI itself
+# (claude-code / codex) is NOT installed here — the persona Dockerfile
+# layers in whichever runtime its agent needs.
+#
+#   claude → claude-agent-acp wraps @anthropic-ai/claude-agent-sdk
+#   codex  → acp-server (from @agentclientprotocol/codex-acp) wraps codex CLI
+RUN npm install -g \
+      @agentclientprotocol/claude-agent-acp \
+      @agentclientprotocol/codex-acp
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 
 # Run as the node:24 base image's built-in `node` user (UID 1000). PERSONA_DIR
-# overlaps with $HOME so the spawned claude-agent-acp subprocess and any
-# operator-side entrypoint helpers share one home dir.
+# overlaps with $HOME so the spawned agent subprocess and any operator-side
+# entrypoint helpers share one home dir.
 RUN chown -R node:node /app
 USER node
 

@@ -1,30 +1,31 @@
-# Example docker-compose for running Claude Agent (ACP) personas.
+# Example docker-compose for running ha-acp-gateway personas.
 #
-# Each persona is its own service block: own bearer token, own bake of
-# CLAUDE.md + settings.json + skills, own named volume, own port. Multi-
-# persona = repeat the block.
+# Each persona is its own service block: own agent (ACP_AGENT), own auth
+# tokens, own bake of system prompt + settings + skills, own named volume,
+# own port. Multi-persona = repeat the block.
 #
 # This compose builds a per-persona overlay image on top of the upstream
-# ha-claude-acp release. The overlay (see examples/personas/voice-assistant/)
+# ha-acp-gateway release. The overlay (see examples/personas/voice-assistant/)
 # layers persona content + entrypoint helpers; the bake-and-reseed pattern
 # keeps the image SHA tracking the persona's contract while a named volume
 # holds runtime state (registered MCP servers, etc.).
 #
 # Operator workflow:
 #   1. Copy examples/personas/voice-assistant/ into your deployment repo at
-#      `personas/<name>/`. Edit CLAUDE.md, settings.json, Dockerfile.
+#      `personas/<name>/`. Edit the bake content + Dockerfile.
 #   2. Generate one bearer token per persona: openssl rand -hex 32
 #   3. Copy this file to your deployment repo and adjust:
 #        - the build.context path
+#        - ACP_AGENT + matching auth env vars
 #        - container_name / volume name / port (one block per persona)
 #        - environment variable names matching your secret store
 #   4. `docker compose up -d --build`
 #
 # Secrets:
-#   CLAUDE_CODE_OAUTH_TOKEN is shared across personas (one Anthropic
-#   account is fine — usage is metered per token). Each persona gets a
-#   distinct BEARER_TOKEN so a leaked one only compromises that persona.
-#   HA_MCP_URL is consumed at container start by lib/setup-mcp.sh.
+#   CLAUDE_CODE_OAUTH_TOKEN / OPENAI_API_KEY can be shared across personas
+#   that use the same agent (usage is metered per token). Each persona
+#   gets a distinct BEARER_TOKEN so a leaked one only compromises that
+#   persona. HA_MCP_URL is consumed at container start by lib/setup-mcp.sh.
 
 services:
   jarvis:
@@ -34,11 +35,12 @@ services:
       args:
         # Pin the upstream release explicitly — :latest moves under you
         # when a new image is published.
-        HA_CLAUDE_ACP_VERSION: 0.1.1
-    container_name: claude-acp-jarvis
+        HA_ACP_GATEWAY_VERSION: 0.2.0
+    container_name: acp-gateway-jarvis
     restart: unless-stopped
     init: true
     environment:
+      ACP_AGENT: claude
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       BEARER_TOKEN: ${JARVIS_BEARER_TOKEN}
       HA_MCP_URL: ${HA_MCP_URL}

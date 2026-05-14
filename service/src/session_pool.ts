@@ -1,4 +1,5 @@
 import type { AcpFactory, AcpSession } from "./acp_session.js";
+import type { AgentLauncher } from "./agents/types.js";
 import type { Logger } from "./logger.js";
 
 export interface PoolEntry {
@@ -26,7 +27,7 @@ export interface SessionPoolOptions {
 
 export interface AcquireOptions {
   personaDir: string;
-  oauthToken: string;
+  launcher: AgentLauncher;
   logger?: Logger;
 }
 
@@ -137,7 +138,7 @@ export class SessionPool {
     const sessionLogger = opts.logger ?? this.logger;
     const session = await this.factory({
       personaDir: opts.personaDir,
-      oauthToken: opts.oauthToken,
+      launcher: opts.launcher,
       logger: sessionLogger,
     });
 

@@ -1,13 +1,20 @@
 # Persona examples
 
 A persona is a directory mounted into the gateway as `HOME` for the
-spawned `claude-agent-acp` subprocess. The adapter reads its config from
-`$HOME/.claude/` using Claude Code's native layout. The service does not
-parse anything here — it only sets `HOME` and spawns the adapter.
+spawned agent subprocess. Each agent reads its own native config layout
+from `$HOME`:
+
+| Agent | Config layout |
+|---|---|
+| `claude` | `$HOME/.claude/` — `CLAUDE.md`, `settings.json`, optional `skills/`, MCP via `claude mcp add` writing to `$HOME/.claude.json` |
+| `codex` | `$HOME/.codex/` — codex CLI's native config; see https://developers.openai.com/codex/cli |
+
+The gateway service does not parse anything here — it only sets `HOME`
+and spawns the agent's ACP wrapper.
 
 See `docs/ARCHITECTURE.md` for the design rationale.
 
-## What gets read
+## Claude — what gets read
 
 The `@agentclientprotocol/claude-agent-acp` adapter (as of v0.33.1) reads
 the following files from the mounted `HOME` on startup:
@@ -42,6 +49,10 @@ its defaults (Sonnet 4.6, no MCP, permission mode `default`). Useful for
 first-boot smoke testing the gateway in isolation.
 
 ## Examples in this directory
+
+Both examples target **Claude** (`ACP_AGENT=claude`). Codex / Gemini /
+other-agent persona examples will land here when the upstream wrappers
+stabilise — the gateway side is already agent-agnostic.
 
 | Example | What it is |
 |---|---|

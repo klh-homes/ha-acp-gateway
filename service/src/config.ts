@@ -1,3 +1,5 @@
+import type { AgentId } from "./agents/types.js";
+
 export type SessionAffinity = "conversation" | "entity";
 
 export interface Config {
@@ -5,7 +7,7 @@ export interface Config {
   logLevel: string;
   bearerToken: string;
   personaDir: string;
-  oauthToken: string;
+  agent: AgentId;
   maxConcurrentSessions: number;
   sessionIdleTtlSec: number;
   /** Force-evict a session after this many seconds of total lifetime, even
@@ -15,7 +17,7 @@ export interface Config {
    *  HA's Assist controls reuse, fresh wake-words get cold sessions.
    *  "entity": pool collapses all requests to a single singleton session
    *  per service process — every request after the first hits the warm
-   *  subprocess + Anthropic prompt cache. Trade-off: Claude remembers
+   *  subprocess + agent's own prompt cache. Trade-off: the agent remembers
    *  prior unrelated conversations until the session is evicted. */
   sessionAffinity: SessionAffinity;
 }
@@ -59,13 +61,24 @@ function readAffinity(): SessionAffinity {
   return raw;
 }
 
+function readAgent(): AgentId {
+  const raw = process.env.ACP_AGENT;
+  if (raw === undefined || raw === "") return "claude";
+  if (raw !== "claude" && raw !== "codex") {
+    throw new Error(
+      `Invalid ACP_AGENT: ${raw} (must be "claude" or "codex")`,
+    );
+  }
+  return raw;
+}
+
 export function loadConfig(): Config {
   return {
     port: readInt("PORT", 8765),
     logLevel: process.env.LOG_LEVEL ?? "info",
     bearerToken: readRequired("BEARER_TOKEN"),
     personaDir: readRequired("PERSONA_DIR"),
-    oauthToken: readRequired("CLAUDE_CODE_OAUTH_TOKEN"),
+    agent: readAgent(),
     maxConcurrentSessions: readInt("MAX_CONCURRENT_SESSIONS", 8),
     sessionIdleTtlSec: readInt("SESSION_IDLE_TTL_SEC", 1800),
     sessionMaxAgeSec: readNonNegativeInt("SESSION_MAX_AGE_SEC", 0),

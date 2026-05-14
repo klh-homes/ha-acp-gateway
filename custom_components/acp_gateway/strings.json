@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Claude Agent (ACP)",
-        "description": "Connect this Home Assistant to one Claude persona deployment. Add the integration once per persona.",
+        "title": "ACP Gateway",
+        "description": "Connect this Home Assistant to one ACP Gateway deployment (one persona per entry). The deployment chooses which agent runtime it spawns (Claude, Codex, ...) — the integration only talks to its gateway.",
         "data": {
           "name": "Persona name",
           "gateway_url": "Gateway URL",

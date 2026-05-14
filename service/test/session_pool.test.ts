@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { AcpFactory, AcpSession } from "../src/acp_session.js";
+import type { AgentLauncher } from "../src/agents/types.js";
 import {
   ConcurrentRequestError,
   PoolAtCapacityError,
   SessionPool,
 } from "../src/session_pool.js";
 import { createLogger } from "../src/logger.js";
+
+const fakeLauncher: AgentLauncher = {
+  id: "claude",
+  spawn() {
+    throw new Error("spawn should not be called in pool tests (fake factory used)");
+  },
+};
 
 const logger = createLogger("silent");
 
@@ -66,7 +74,7 @@ function makeFactory(): {
   };
 }
 
-const baseOpts = { personaDir: "/tmp/p", oauthToken: "fake" };
+const baseOpts = { personaDir: "/tmp/p", launcher: fakeLauncher };
 
 describe("SessionPool — acquire / release", () => {
   it("reuses the same session for the same conversation_id", async () => {

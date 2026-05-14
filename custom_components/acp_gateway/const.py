@@ -1,10 +1,10 @@
-"""Constants for the Claude Agent (ACP) integration."""
+"""Constants for the ACP Gateway integration."""
 
 from __future__ import annotations
 
 from typing import Final
 
-DOMAIN: Final = "claude_acp"
+DOMAIN: Final = "acp_gateway"
 
 CONF_NAME: Final = "name"
 CONF_GATEWAY_URL: Final = "gateway_url"

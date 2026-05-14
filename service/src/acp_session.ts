@@ -1,5 +1,3 @@
-import { spawn } from "node:child_process";
-import { Readable, Writable } from "node:stream";
 import {
   ClientSideConnection,
   PROTOCOL_VERSION,
@@ -16,14 +14,19 @@ import type {
   SessionUpdate,
   Stream,
 } from "@agentclientprotocol/sdk";
+import type { AgentLauncher } from "./agents/types.js";
 import type { Logger } from "./logger.js";
+
+// Re-export so existing imports (e.g. `import { ndJsonStream }`) inside
+// agent launchers don't have to chase the SDK directly.
+export { ndJsonStream };
 
 export interface AcpSessionOptions {
   personaDir: string;
-  oauthToken: string;
+  launcher: AgentLauncher;
   logger: Logger;
-  spawnBin?: string;
   clientInfo?: { name: string; version: string };
+  /** Test hook — paired in-memory streams replace the real spawn. */
   streamFactory?: () => Promise<StreamHandle>;
 }
 
@@ -43,11 +46,9 @@ export interface AcpSession {
 
 export type AcpFactory = (opts: {
   personaDir: string;
-  oauthToken: string;
+  launcher: AgentLauncher;
   logger: Logger;
 }) => Promise<AcpSession>;
-
-const DEFAULT_BIN = "claude-agent-acp";
 
 /**
  * Pure event filter. Returns the forwardable text delta, or null if the
@@ -128,64 +129,6 @@ export class Pushable<T> implements AsyncIterable<T> {
   }
 }
 
-function spawnSubprocess(opts: {
-  spawnBin: string;
-  personaDir: string;
-  oauthToken: string;
-  logger: Logger;
-}): StreamHandle {
-  const proc = spawn(opts.spawnBin, [], {
-    env: {
-      HOME: opts.personaDir,
-      PATH: process.env.PATH ?? "",
-      USER: process.env.USER ?? "",
-      CLAUDE_CODE_OAUTH_TOKEN: opts.oauthToken,
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
-  proc.stderr?.on("data", (chunk: Buffer) => {
-    const text = chunk.toString().trim();
-    if (text.length > 0) {
-      opts.logger.warn({ source: "claude-agent-acp" }, text);
-    }
-  });
-
-  const exited = new Promise<{
-    code: number | null;
-    signal: NodeJS.Signals | null;
-  }>((resolve) => {
-    proc.once("exit", (code, signal) => {
-      resolve({ code, signal });
-    });
-  });
-
-  const stdin = proc.stdin;
-  const stdout = proc.stdout;
-  if (!stdin || !stdout) {
-    proc.kill("SIGKILL");
-    throw new Error("claude-agent-acp subprocess missing stdio pipes");
-  }
-  const stream = ndJsonStream(
-    Writable.toWeb(stdin) as WritableStream<Uint8Array>,
-    Readable.toWeb(stdout) as ReadableStream<Uint8Array>,
-  );
-
-  return {
-    stream,
-    exited,
-    async close(): Promise<void> {
-      if (proc.exitCode !== null) return;
-      proc.kill("SIGTERM");
-      const killTimer = setTimeout(() => {
-        if (proc.exitCode === null) proc.kill("SIGKILL");
-      }, 1000);
-      await exited;
-      clearTimeout(killTimer);
-    },
-  };
-}
-
 export async function openAcpSession(
   opts: AcpSessionOptions,
 ): Promise<AcpSession> {
@@ -193,10 +136,8 @@ export async function openAcpSession(
     opts.streamFactory ??
     (() =>
       Promise.resolve(
-        spawnSubprocess({
-          spawnBin: opts.spawnBin ?? DEFAULT_BIN,
+        opts.launcher.spawn({
           personaDir: opts.personaDir,
-          oauthToken: opts.oauthToken,
           logger: opts.logger,
         }),
       ));
@@ -211,12 +152,13 @@ export async function openAcpSession(
     requestPermission(
       p: RequestPermissionRequest,
     ): Promise<RequestPermissionResponse> {
-      // Under bypassPermissions this should not fire. Log loudly so a
-      // misconfigured persona surfaces in operator logs, then auto-allow
-      // the first allow_* option as defense-in-depth.
+      // Under bypassPermissions this should not fire (Claude path). For
+      // agents without a bypass mode (Codex), this is the only fallback —
+      // auto-allow the first allow_* option so voice doesn't hang on a
+      // permission prompt the user can't see.
       opts.logger.warn(
         { toolCall: p.toolCall.title, options: p.options.map((o) => o.kind) },
-        "unexpected requestPermission under bypassPermissions",
+        "agent requested permission (auto-allowing)",
       );
       const allow =
         p.options.find((o) => o.kind === "allow_always") ??
@@ -248,7 +190,7 @@ export async function openAcpSession(
   // Translate subprocess exit into a stream failure on whatever's in flight.
   void handle.exited.then(({ code, signal }) => {
     aborted = true;
-    opts.logger.info({ code, signal }, "claude-agent-acp exited");
+    opts.logger.info({ code, signal, agent: opts.launcher.id }, "agent subprocess exited");
     activeStream?.fail(
       new Error(`subprocess exited (code=${code ?? "null"}, signal=${signal ?? "null"})`),
     );
@@ -259,12 +201,12 @@ export async function openAcpSession(
   // so it sees these awaited responses as `unknown`. tsc resolves them
   // correctly; the disables below cover only this interop quirk.
 
-  opts.logger.debug("ACP initialize");
+  opts.logger.debug({ agent: opts.launcher.id }, "ACP initialize");
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const _initResp: InitializeResponse = await conn.initialize({
     protocolVersion: PROTOCOL_VERSION,
     clientCapabilities: { fs: {} },
-    clientInfo: opts.clientInfo ?? { name: "ha-claude-acp", version: "0.1.0" },
+    clientInfo: opts.clientInfo ?? { name: "ha-acp-gateway", version: "0.2.0" },
   });
   void _initResp;
 
@@ -276,15 +218,20 @@ export async function openAcpSession(
   });
   const sessionId = newSess.sessionId;
 
-  opts.logger.debug({ sessionId }, "ACP setSessionMode(bypassPermissions)");
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const _modeResp: SetSessionModeResponse = await conn.setSessionMode({
-    sessionId,
-    modeId: "bypassPermissions",
-  });
-  void _modeResp;
+  if (opts.launcher.sessionMode) {
+    opts.logger.debug(
+      { sessionId, mode: opts.launcher.sessionMode },
+      "ACP setSessionMode",
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const _modeResp: SetSessionModeResponse = await conn.setSessionMode({
+      sessionId,
+      modeId: opts.launcher.sessionMode,
+    });
+    void _modeResp;
+  }
 
-  opts.logger.info({ sessionId }, "ACP session ready");
+  opts.logger.info({ sessionId, agent: opts.launcher.id }, "ACP session ready");
 
   return {
     sessionId,

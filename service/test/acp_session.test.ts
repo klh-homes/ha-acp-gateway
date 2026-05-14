@@ -26,7 +26,19 @@ import {
   openAcpSession,
   type StreamHandle,
 } from "../src/acp_session.js";
+import type { AgentLauncher } from "../src/agents/types.js";
 import { createLogger } from "../src/logger.js";
+
+/** Test launcher — openAcpSession uses streamFactory in tests, so .spawn()
+ *  should never be called. The launcher only needs to satisfy the type
+ *  and supply the `bypassPermissions` mode that Claude tests expect. */
+const fakeLauncher: AgentLauncher = {
+  id: "claude",
+  sessionMode: "bypassPermissions",
+  spawn() {
+    throw new Error("spawn should not be called when streamFactory is provided");
+  },
+};
 
 const logger = createLogger("silent");
 
@@ -247,7 +259,7 @@ describe("openAcpSession", () => {
     const { factory } = makeTestHarness({ newSessionId: "abc-123" });
     const session = await openAcpSession({
       personaDir: "/tmp/test-persona",
-      oauthToken: "fake",
+      launcher: fakeLauncher,
       logger,
       streamFactory: factory,
     });
@@ -267,7 +279,7 @@ describe("openAcpSession", () => {
     });
     const session = await openAcpSession({
       personaDir: "/tmp/test-persona",
-      oauthToken: "fake",
+      launcher: fakeLauncher,
       logger,
       streamFactory: factory,
     });
@@ -290,7 +302,7 @@ describe("openAcpSession", () => {
     const { factory, signalExit } = makeTestHarness();
     const session = await openAcpSession({
       personaDir: "/tmp/test-persona",
-      oauthToken: "fake",
+      launcher: fakeLauncher,
       logger,
       streamFactory: factory,
     });
@@ -318,7 +330,7 @@ describe("openAcpSession", () => {
     });
     const session = await openAcpSession({
       personaDir: "/tmp/test-persona",
-      oauthToken: "fake",
+      launcher: fakeLauncher,
       logger,
       streamFactory: factory,
     });

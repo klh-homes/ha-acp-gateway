@@ -1,15 +1,19 @@
 # syntax=docker/dockerfile:1.7
 #
-# Overlay Dockerfile for a voice-assistant persona.
+# Overlay Dockerfile for a Claude-based voice-assistant persona.
 #
 # Layers persona content (CLAUDE.md, .claude/settings.json, optional skill
-# bundles) and an entrypoint wrapper on top of the upstream ha-claude-acp
+# bundles) and an entrypoint wrapper on top of the upstream ha-acp-gateway
 # image. The wrapper:
 #   - reseeds image-baked CLAUDE.md + settings.json into PERSONA_DIR on
 #     every start (named-volume-masking escape)
 #   - rsyncs baked skill bundles into $PERSONA_DIR/.claude/skills/
 #   - registers MCP servers via `claude mcp add` so the spawned ACP
 #     subprocess picks them up out of $PERSONA_DIR/.claude.json
+#
+# This example targets ACP_AGENT=claude. For a codex-based persona, use a
+# different bake layout under $HOME/.codex/ and skip the claude-code CLI
+# install below.
 #
 # Build context = this directory. Pin the upstream tag explicitly — do not
 # use `:latest`, which moves under you when a new image is published.
@@ -20,9 +24,9 @@
 #   3. Optionally vendor skill packs and add COPY lines below the placeholder
 #   4. Reference this Dockerfile from your compose service block
 
-ARG HA_CLAUDE_ACP_VERSION=0.1.1
+ARG HA_ACP_GATEWAY_VERSION=0.2.0
 
-FROM ghcr.io/klh-homes/ha-claude-acp:${HA_CLAUDE_ACP_VERSION}
+FROM ghcr.io/klh-homes/ha-acp-gateway:${HA_ACP_GATEWAY_VERSION}
 
 USER root
 
