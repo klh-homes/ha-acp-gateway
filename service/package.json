@@ -20,19 +20,19 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@agentclientprotocol/claude-agent-acp": "^0.33.1",
-    "@agentclientprotocol/sdk": "^0.21.0",
-    "@hono/node-server": "^2.0.2",
-    "hono": "^4.12.18",
+    "@agentclientprotocol/claude-agent-acp": "^0.37.0",
+    "@agentclientprotocol/sdk": "^0.22.1",
+    "@hono/node-server": "^2.0.4",
+    "hono": "^4.12.23",
     "pino": "^10.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.7.0",
-    "eslint": "^10.3.0",
-    "tsx": "^4.21.0",
+    "@types/node": "^25.9.1",
+    "eslint": "^10.4.0",
+    "tsx": "^4.22.3",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.3",
-    "vitest": "^4.1.6"
+    "typescript-eslint": "^8.60.0",
+    "vitest": "^4.1.7"
   }
 }

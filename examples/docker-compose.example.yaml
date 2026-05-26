@@ -35,7 +35,7 @@ services:
       args:
         # Pin the upstream release explicitly — :latest moves under you
         # when a new image is published.
-        HA_ACP_GATEWAY_VERSION: 0.2.0
+        HA_ACP_GATEWAY_VERSION: 0.2.1
     container_name: acp-gateway-jarvis
     restart: unless-stopped
     init: true
@@ -48,9 +48,9 @@ services:
     volumes:
       - jarvis_data:/home/node
     ports:
-      - '8765:8765'
+      - "8765:8765"
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8765/healthz']
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8765/healthz"]
       interval: 30s
       timeout: 5s
       start_period: 10s
