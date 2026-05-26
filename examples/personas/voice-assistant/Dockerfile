@@ -24,7 +24,7 @@
 #   3. Optionally vendor skill packs and add COPY lines below the placeholder
 #   4. Reference this Dockerfile from your compose service block
 
-ARG HA_ACP_GATEWAY_VERSION=0.2.0
+ARG HA_ACP_GATEWAY_VERSION=0.2.1
 
 FROM ghcr.io/klh-homes/ha-acp-gateway:${HA_ACP_GATEWAY_VERSION}
 

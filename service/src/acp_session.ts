@@ -190,28 +190,26 @@ export async function openAcpSession(
   // Translate subprocess exit into a stream failure on whatever's in flight.
   void handle.exited.then(({ code, signal }) => {
     aborted = true;
-    opts.logger.info({ code, signal, agent: opts.launcher.id }, "agent subprocess exited");
+    opts.logger.info(
+      { code, signal, agent: opts.launcher.id },
+      "agent subprocess exited",
+    );
     activeStream?.fail(
-      new Error(`subprocess exited (code=${code ?? "null"}, signal=${signal ?? "null"})`),
+      new Error(
+        `subprocess exited (code=${code ?? "null"}, signal=${signal ?? "null"})`,
+      ),
     );
   });
 
-  // The SDK re-exports schema types via `export type *`, which the current
-  // typescript-eslint version cannot follow back to the concrete shape,
-  // so it sees these awaited responses as `unknown`. tsc resolves them
-  // correctly; the disables below cover only this interop quirk.
-
   opts.logger.debug({ agent: opts.launcher.id }, "ACP initialize");
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const _initResp: InitializeResponse = await conn.initialize({
     protocolVersion: PROTOCOL_VERSION,
     clientCapabilities: { fs: {} },
-    clientInfo: opts.clientInfo ?? { name: "ha-acp-gateway", version: "0.2.0" },
+    clientInfo: opts.clientInfo ?? { name: "ha-acp-gateway", version: "0.2.1" },
   });
   void _initResp;
 
   opts.logger.debug({ personaDir: opts.personaDir }, "ACP newSession");
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const newSess: NewSessionResponse = await conn.newSession({
     cwd: opts.personaDir,
     mcpServers: [],
@@ -223,7 +221,6 @@ export async function openAcpSession(
       { sessionId, mode: opts.launcher.sessionMode },
       "ACP setSessionMode",
     );
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const _modeResp: SetSessionModeResponse = await conn.setSessionMode({
       sessionId,
       modeId: opts.launcher.sessionMode,
@@ -274,7 +271,10 @@ export async function openAcpSession(
           try {
             await conn.cancel({ sessionId });
           } catch (err) {
-            opts.logger.warn({ err }, "cancel after early iterator exit failed");
+            opts.logger.warn(
+              { err },
+              "cancel after early iterator exit failed",
+            );
           }
         }
         await settled;
