@@ -4,10 +4,10 @@ A persona is a directory mounted into the gateway as `HOME` for the
 spawned agent subprocess. Each agent reads its own native config layout
 from `$HOME`:
 
-| Agent | Config layout |
-|---|---|
+| Agent    | Config layout                                                                                                                 |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `claude` | `$HOME/.claude/` — `CLAUDE.md`, `settings.json`, optional `skills/`, MCP via `claude mcp add` writing to `$HOME/.claude.json` |
-| `codex` | `$HOME/.codex/` — codex CLI's native config; see https://developers.openai.com/codex/cli |
+| `codex`  | `$HOME/.codex/` — codex CLI's native config; see https://developers.openai.com/codex/cli                                      |
 
 The gateway service does not parse anything here — it only sets `HOME`
 and spawns the agent's ACP wrapper.
@@ -16,7 +16,7 @@ See `docs/ARCHITECTURE.md` for the design rationale.
 
 ## Claude — what gets read
 
-The `@agentclientprotocol/claude-agent-acp` adapter (as of v0.33.1) reads
+The `@agentclientprotocol/claude-agent-acp` adapter (as of v0.100.0) reads
 the following files from the mounted `HOME` on startup:
 
 - **`.claude/settings.json`** — `ClaudeCodeSettings` shape:
@@ -31,7 +31,7 @@ the following files from the mounted `HOME` on startup:
   ```
 - **`.claude/CLAUDE.md`** — Claude Code's system-prompt file. Read on
   session start and prepended to the conversation context.
-- **MCP servers** — *not in `settings.json`.* Configure via the Claude
+- **MCP servers** — _not in `settings.json`._ Configure via the Claude
   CLI from a host with `HOME` set to the persona dir:
   ```bash
   HOME=/path/to/persona claude mcp add ha-mcp http://ha-mcp.lan:3000/mcp \
@@ -54,9 +54,9 @@ Both examples target **Claude** (`ACP_AGENT=claude`). Codex / Gemini /
 other-agent persona examples will land here when the upstream wrappers
 stabilise — the gateway side is already agent-agnostic.
 
-| Example | What it is |
-|---|---|
-| `minimal/` | One-line system prompt in a bind-mounted `.claude/` directory. Smallest demo; nothing baked, no overlay Dockerfile. The simplest possible deployment. |
+| Example            | What it is                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `minimal/`         | One-line system prompt in a bind-mounted `.claude/` directory. Smallest demo; nothing baked, no overlay Dockerfile. The simplest possible deployment.                                                                                                                                                                                                                                 |
 | `voice-assistant/` | A realistic HA voice agent: short conversational prompt, `bypassPermissions` mode, model and effort tuned for voice latency. Ships with an **overlay Dockerfile** that bakes persona content into a per-persona image and an entrypoint that reseeds the volume + registers MCP servers via `claude mcp add` on every start. This is the pattern recommended for production homelabs. |
 
 ## Two deployment patterns

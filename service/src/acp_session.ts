@@ -1,15 +1,12 @@
 import {
-  ClientSideConnection,
   PROTOCOL_VERSION,
+  client,
+  methods,
   ndJsonStream,
 } from "@agentclientprotocol/sdk";
 import type {
-  Client,
   InitializeResponse,
   NewSessionResponse,
-  RequestPermissionRequest,
-  RequestPermissionResponse,
-  SessionNotification,
   SetSessionModeResponse,
   SessionUpdate,
   Stream,
@@ -148,10 +145,8 @@ export async function openAcpSession(
   let activeStream: Pushable<string> | null = null;
   let aborted = false;
 
-  const client: Client = {
-    requestPermission(
-      p: RequestPermissionRequest,
-    ): Promise<RequestPermissionResponse> {
+  const clientApp = client({ name: "ha-acp-gateway" })
+    .onRequest(methods.client.session.requestPermission, ({ params: p }) => {
       // Under bypassPermissions this should not fire (Claude path). For
       // agents without a bypass mode (Codex), this is the only fallback —
       // auto-allow the first allow_* option so voice doesn't hang on a
@@ -165,13 +160,13 @@ export async function openAcpSession(
         p.options.find((o) => o.kind === "allow_once") ??
         p.options[0];
       if (!allow) {
-        return Promise.resolve({ outcome: { outcome: "cancelled" } });
+        return { outcome: { outcome: "cancelled" } };
       }
-      return Promise.resolve({
+      return {
         outcome: { outcome: "selected", optionId: allow.optionId },
-      });
-    },
-    sessionUpdate(n: SessionNotification): Promise<void> {
+      };
+    })
+    .onNotification(methods.client.session.update, ({ params: n }) => {
       const delta = extractAgentDelta(n.update);
       if (delta !== null) {
         activeStream?.push(delta);
@@ -181,11 +176,10 @@ export async function openAcpSession(
           "dropping ACP update",
         );
       }
-      return Promise.resolve();
-    },
-  };
+    });
 
-  const conn = new ClientSideConnection(() => client, handle.stream);
+  const connection = clientApp.connect(handle.stream);
+  const agent = connection.agent;
 
   // Translate subprocess exit into a stream failure on whatever's in flight.
   void handle.exited.then(({ code, signal }) => {
@@ -202,18 +196,27 @@ export async function openAcpSession(
   });
 
   opts.logger.debug({ agent: opts.launcher.id }, "ACP initialize");
-  const _initResp: InitializeResponse = await conn.initialize({
-    protocolVersion: PROTOCOL_VERSION,
-    clientCapabilities: { fs: {} },
-    clientInfo: opts.clientInfo ?? { name: "ha-acp-gateway", version: "0.2.1" },
-  });
+  const _initResp: InitializeResponse = await agent.request(
+    methods.agent.initialize,
+    {
+      protocolVersion: PROTOCOL_VERSION,
+      clientCapabilities: { fs: {} },
+      clientInfo: opts.clientInfo ?? {
+        name: "ha-acp-gateway",
+        version: "0.2.1",
+      },
+    },
+  );
   void _initResp;
 
   opts.logger.debug({ personaDir: opts.personaDir }, "ACP newSession");
-  const newSess: NewSessionResponse = await conn.newSession({
-    cwd: opts.personaDir,
-    mcpServers: [],
-  });
+  const newSess: NewSessionResponse = await agent.request(
+    methods.agent.session.new,
+    {
+      cwd: opts.personaDir,
+      mcpServers: [],
+    },
+  );
   const sessionId = newSess.sessionId;
 
   if (opts.launcher.sessionMode) {
@@ -221,10 +224,13 @@ export async function openAcpSession(
       { sessionId, mode: opts.launcher.sessionMode },
       "ACP setSessionMode",
     );
-    const _modeResp: SetSessionModeResponse = await conn.setSessionMode({
-      sessionId,
-      modeId: opts.launcher.sessionMode,
-    });
+    const _modeResp: SetSessionModeResponse = await agent.request(
+      methods.agent.session.setMode,
+      {
+        sessionId,
+        modeId: opts.launcher.sessionMode,
+      },
+    );
     void _modeResp;
   }
 
@@ -244,8 +250,8 @@ export async function openAcpSession(
       activeStream = pushable;
       let promptDone = false;
 
-      const settled = conn
-        .prompt({
+      const settled = agent
+        .request(methods.agent.session.prompt, {
           sessionId,
           prompt: [{ type: "text", text }],
         })
@@ -269,7 +275,7 @@ export async function openAcpSession(
         if (!promptDone) {
           // Caller bailed early — cancel the in-flight turn.
           try {
-            await conn.cancel({ sessionId });
+            await agent.notify(methods.agent.session.cancel, { sessionId });
           } catch (err) {
             opts.logger.warn(
               { err },
@@ -283,6 +289,7 @@ export async function openAcpSession(
     async close(): Promise<void> {
       activeStream?.end();
       activeStream = null;
+      connection.close();
       await handle.close();
     },
   };

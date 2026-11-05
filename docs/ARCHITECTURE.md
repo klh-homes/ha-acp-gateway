@@ -32,10 +32,10 @@ choice of agent runtime is a per-deployment env var (`ACP_AGENT`) and a
 matching auth env var; the session pool, SSE framing, HA integration code
 all stay identical.
 
-| `ACP_AGENT` | Wrapper binary | Auth env vars | Persona config root |
-|---|---|---|---|
-| `claude` (default) | `claude-agent-acp` | `CLAUDE_CODE_OAUTH_TOKEN` | `$HOME/.claude/` |
-| `codex` | `codex-acp` (from `@zed-industries/codex-acp`) | `OPENAI_API_KEY` (or pre-`codex login`); optional `CODEX_PATH` | `$HOME/.codex/` |
+| `ACP_AGENT`        | Wrapper binary                                      | Auth env vars                                                  | Persona config root |
+| ------------------ | --------------------------------------------------- | -------------------------------------------------------------- | ------------------- |
+| `claude` (default) | `claude-agent-acp`                                  | `CLAUDE_CODE_OAUTH_TOKEN`                                      | `$HOME/.claude/`    |
+| `codex`            | `codex-acp` (from `@agentclientprotocol/codex-acp`) | `OPENAI_API_KEY` (or pre-`codex login`); optional `CODEX_PATH` | `$HOME/.codex/`     |
 
 Adding a new agent (Gemini CLI, Kiro, OpenCode, …) means writing one new
 file under `service/src/agents/<name>.ts` that exports a `createXLauncher`

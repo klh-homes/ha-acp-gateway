@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1
 
-FROM node:24-trixie-slim AS build
+FROM node:26-trixie-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
@@ -8,7 +8,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
-FROM node:24-trixie-slim AS runtime
+FROM node:26-trixie-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
@@ -16,27 +16,26 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends wget ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# ACP adapter wrappers — small npm packages that expose the agent runtimes
-# over ACP via a stdio binary on PATH. The service picks one to spawn per
-# request based on ACP_AGENT (see config.ts). The underlying CLI itself
-# (claude-code / codex) is NOT installed here — the persona Dockerfile
-# layers in whichever runtime its agent needs.
+# ACP adapter wrappers expose the agent runtimes over ACP via a stdio binary
+# on PATH. The service picks one to spawn per request based on ACP_AGENT (see
+# config.ts). The Codex adapter includes a compatible @openai/codex runtime;
+# CODEX_PATH can override it when an operator needs a different binary.
 #
 #   claude → claude-agent-acp (binary: `claude-agent-acp`)
 #            wraps @anthropic-ai/claude-agent-sdk
-#   codex  → @zed-industries/codex-acp (binary: `codex-acp`)
-#            wraps codex CLI; the @agentclientprotocol/codex-acp variant
-#            exists but @zed-industries one is the de-facto upstream and
-#            far more mature.
+#   codex  → @agentclientprotocol/codex-acp (binary: `codex-acp`)
+#            wraps the bundled Codex CLI via Codex App Server
+ARG CLAUDE_AGENT_ACP_VERSION=0.100.0
+ARG CODEX_ACP_VERSION=2.5.0
 RUN npm install -g \
-      @agentclientprotocol/claude-agent-acp \
-      @zed-industries/codex-acp
+      @agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION} \
+      @agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 
-# Run as the node:24 base image's built-in `node` user (UID 1000). PERSONA_DIR
+# Run as the node:26 base image's built-in `node` user (UID 1000). PERSONA_DIR
 # overlaps with $HOME so the spawned agent subprocess and any operator-side
 # entrypoint helpers share one home dir.
 RUN chown -R node:node /app
