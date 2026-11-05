@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1
 #
 # Overlay Dockerfile for a Claude-based voice-assistant persona.
 #

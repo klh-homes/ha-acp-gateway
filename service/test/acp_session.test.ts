@@ -1,22 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  AgentSideConnection,
   PROTOCOL_VERSION,
+  agent,
+  methods,
   ndJsonStream,
 } from "@agentclientprotocol/sdk";
 import type {
-  Agent,
-  AuthenticateRequest,
-  AuthenticateResponse,
-  CancelNotification,
-  InitializeRequest,
-  InitializeResponse,
-  NewSessionRequest,
-  NewSessionResponse,
   PromptRequest,
   PromptResponse,
-  SetSessionModeRequest,
-  SetSessionModeResponse,
   Stream,
 } from "@agentclientprotocol/sdk";
 
@@ -36,7 +27,9 @@ const fakeLauncher: AgentLauncher = {
   id: "claude",
   sessionMode: "bypassPermissions",
   spawn() {
-    throw new Error("spawn should not be called when streamFactory is provided");
+    throw new Error(
+      "spawn should not be called when streamFactory is provided",
+    );
   },
 };
 
@@ -149,67 +142,57 @@ describe("extractAgentDelta", () => {
 
 interface FakeAgentBehavior {
   /** Called from inside Agent.prompt to drive sessionUpdate notifications. */
-  prompt?: (req: PromptRequest, push: (text: string) => Promise<void>) => Promise<PromptResponse>;
+  prompt?: (
+    req: PromptRequest,
+    push: (text: string) => Promise<void>,
+  ) => Promise<PromptResponse>;
   /** Optional override of newSession (otherwise returns a default response). */
   newSessionId?: string;
 }
 
-function makeFakeAgent(
-  agentConnRef: { conn: AgentSideConnection | null },
-  behavior: FakeAgentBehavior = {},
-): Agent {
+function makeFakeAgent(behavior: FakeAgentBehavior = {}) {
   const sessionId = behavior.newSessionId ?? "fake-session-1";
-  const agent: Agent = {
-    initialize(_p: InitializeRequest): Promise<InitializeResponse> {
-      return Promise.resolve({
-        protocolVersion: PROTOCOL_VERSION,
-        agentCapabilities: {
-          loadSession: false,
-          promptCapabilities: { image: false, embeddedContext: false },
-          mcpCapabilities: { http: true, sse: true },
-        },
-        authMethods: [],
-      });
-    },
-    newSession(_p: NewSessionRequest): Promise<NewSessionResponse> {
-      return Promise.resolve({
-        sessionId,
-        modes: {
-          currentModeId: "default",
-          availableModes: [
-            { id: "default", name: "Default", description: "" },
-            { id: "bypassPermissions", name: "Bypass", description: "" },
-          ],
-        },
-      });
-    },
-    setSessionMode(_p: SetSessionModeRequest): Promise<SetSessionModeResponse> {
-      return Promise.resolve({});
-    },
-    authenticate(_p: AuthenticateRequest): Promise<AuthenticateResponse> {
-      return Promise.resolve({});
-    },
-    async prompt(req: PromptRequest): Promise<PromptResponse> {
-      if (!behavior.prompt) {
-        return { stopReason: "end_turn" };
-      }
-      const push = async (text: string): Promise<void> => {
-        if (!agentConnRef.conn) throw new Error("agent connection not yet attached");
-        await agentConnRef.conn.sessionUpdate({
-          sessionId: req.sessionId,
-          update: {
-            sessionUpdate: "agent_message_chunk",
-            content: { type: "text", text },
-          },
-        });
-      };
-      return behavior.prompt(req, push);
-    },
-    cancel(_p: CancelNotification): Promise<void> {
-      return Promise.resolve();
-    },
-  };
-  return agent;
+  return agent({ name: "fake-agent" })
+    .onRequest(methods.agent.initialize, () => ({
+      protocolVersion: PROTOCOL_VERSION,
+      agentCapabilities: {
+        loadSession: false,
+        promptCapabilities: { image: false, embeddedContext: false },
+        mcpCapabilities: { http: true, sse: true },
+      },
+      authMethods: [],
+    }))
+    .onRequest(methods.agent.session.new, () => ({
+      sessionId,
+      modes: {
+        currentModeId: "default",
+        availableModes: [
+          { id: "default", name: "Default", description: "" },
+          { id: "bypassPermissions", name: "Bypass", description: "" },
+        ],
+      },
+    }))
+    .onRequest(methods.agent.session.setMode, () => ({}))
+    .onRequest(methods.agent.authenticate, () => ({}))
+    .onRequest(
+      methods.agent.session.prompt,
+      async ({ params: req, client }) => {
+        if (!behavior.prompt) {
+          return { stopReason: "end_turn" };
+        }
+        const push = async (text: string): Promise<void> => {
+          await client.notify(methods.client.session.update, {
+            sessionId: req.sessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text },
+            },
+          });
+        };
+        return behavior.prompt(req, push);
+      },
+    )
+    .onNotification(methods.agent.session.cancel, () => {});
 }
 
 function makePairedStreams(): { client: Stream; agent: Stream } {
@@ -225,10 +208,9 @@ function makeTestHarness(behavior?: FakeAgentBehavior): {
   factory: () => Promise<StreamHandle>;
   signalExit: (code: number | null, signal: NodeJS.Signals | null) => void;
 } {
-  const { client, agent } = makePairedStreams();
-  const agentConnRef: { conn: AgentSideConnection | null } = { conn: null };
-  const fakeAgent = makeFakeAgent(agentConnRef, behavior);
-  agentConnRef.conn = new AgentSideConnection(() => fakeAgent, agent);
+  const { client, agent: agentStream } = makePairedStreams();
+  const fakeAgent = makeFakeAgent(behavior);
+  fakeAgent.connect(agentStream);
 
   let resolveExit: (v: {
     code: number | null;
@@ -270,7 +252,7 @@ describe("openAcpSession", () => {
   it("streams agent_message_chunk deltas in order", async () => {
     const { factory } = makeTestHarness({
       prompt: async (_req, push) => {
-        await push("");           // empty leading chunk — should be filtered
+        await push(""); // empty leading chunk — should be filtered
         await push("hello");
         await push(" ");
         await push("world");
@@ -294,7 +276,7 @@ describe("openAcpSession", () => {
   it("rejects new prompts after the subprocess has exited", async () => {
     // Note: the more complete scenario — subprocess exits *during* an
     // in-flight prompt — is covered by the production path. There the
-    // closed stdio pipes cause ClientSideConnection to reject the pending
+    // closed stdio pipes cause the SDK client connection to reject the pending
     // RPC, which resolves the `settled` chain in the wrapper. The paired
     // in-memory streams here don't model EOF cleanly, so we exercise only
     // the post-exit "aborted" guard, which is what's specific to this

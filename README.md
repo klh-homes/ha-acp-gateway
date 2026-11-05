@@ -19,17 +19,17 @@ voice-pipeline ergonomics are still field-testing.
 Acceptance criteria for the core (Claude path; see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for full text):
 
-| # | Criterion | Status |
-|---|-----------|--------|
-| 1 | `/healthz` returns 200 unauthenticated with the active agent id | ✅ |
-| 2 | `/v1/converse` returns a complete SSE stream terminated by `done` | ✅ |
-| 3 | Integration appears in HA *Add Integration* menu and supports multiple entries | ✅ |
-| 4 | Conversation entity is selectable in an Assist pipeline | ✅ |
-| 5 | Voice round-trip under 5 s on the LAN | ✅ (≈ 3 s warm) |
-| 6 | Spoken tool action executes via the persona's MCP | ✅ |
-| 7 | Long responses stream incrementally to TTS | ✅ |
-| 8 | Unreachable deployment surfaces a clean error in HA | ✅ |
-| 9 | Restarting a deployment spawns a fresh session transparently | ✅ |
+| #   | Criterion                                                                      | Status          |
+| --- | ------------------------------------------------------------------------------ | --------------- |
+| 1   | `/healthz` returns 200 unauthenticated with the active agent id                | ✅              |
+| 2   | `/v1/converse` returns a complete SSE stream terminated by `done`              | ✅              |
+| 3   | Integration appears in HA _Add Integration_ menu and supports multiple entries | ✅              |
+| 4   | Conversation entity is selectable in an Assist pipeline                        | ✅              |
+| 5   | Voice round-trip under 5 s on the LAN                                          | ✅ (≈ 3 s warm) |
+| 6   | Spoken tool action executes via the persona's MCP                              | ✅              |
+| 7   | Long responses stream incrementally to TTS                                     | ✅              |
+| 8   | Unreachable deployment surfaces a clean error in HA                            | ✅              |
+| 9   | Restarting a deployment spawns a fresh session transparently                   | ✅              |
 
 ## Components
 
@@ -43,10 +43,10 @@ Acceptance criteria for the core (Claude path; see
 
 Set `ACP_AGENT` per deployment:
 
-| `ACP_AGENT` | Auth env vars | Spawned binary |
-|---|---|---|
-| `claude` (default) | `CLAUDE_CODE_OAUTH_TOKEN` | `claude-agent-acp` |
-| `codex` | `OPENAI_API_KEY` (or pre-`codex login` in HOME); optional `CODEX_PATH` | `codex-acp` |
+| `ACP_AGENT`        | Auth env vars                                                          | Spawned binary     |
+| ------------------ | ---------------------------------------------------------------------- | ------------------ |
+| `claude` (default) | `CLAUDE_CODE_OAUTH_TOKEN`                                              | `claude-agent-acp` |
+| `codex`            | `OPENAI_API_KEY` (or pre-`codex login` in HOME); optional `CODEX_PATH` | `codex-acp`        |
 
 Each persona deployment is one agent. To run Jarvis on Claude and
 Friday on Codex, run two separate service containers with their own
@@ -102,7 +102,7 @@ source service/.env && curl -N -X POST http://localhost:8765/v1/converse \
 ```
 
 You should see `event: text` frames carrying the reply followed by
-`event: done`. Requires Node.js >= 24.
+`event: done`. Requires Node.js >= 26.
 
 ## License
 
